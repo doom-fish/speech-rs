@@ -206,3 +206,49 @@ fn sf_transcription_segment_coverage() {
     ]);
     report("SFTranscriptionSegment", &apple, &ours, &omitted);
 }
+
+#[test]
+fn sf_speech_recognition_result_coverage() {
+    let header = read_header("SFSpeechRecognitionResult");
+    let body = extract_interface(&header, "SFSpeechRecognitionResult");
+    let apple = extract_member_surface(&body);
+    let ours = references_in_bridge(&apple);
+    let omitted = omitted_set([
+        // Multi-hypothesis transcripts; we only surface the best one in v0.1.
+        "transcriptions",
+        // SFSpeechRecognitionMetadata exposes audio analytics, lattice
+        // confidence, and speaking-rate measurements; v0.2 will surface it
+        // as a typed RecognitionMetadata struct.
+        "speechRecognitionMetadata",
+        // The bare `final` keyword conflicts with Swift; we read it via the
+        // `getter=isFinal` rewrite handled separately by the harness.
+        "final",
+    ]);
+    report("SFSpeechRecognitionResult", &apple, &ours, &omitted);
+}
+
+#[test]
+fn sf_speech_recognition_task_coverage() {
+    let header = read_header("SFSpeechRecognitionTask");
+    let body = extract_interface(&header, "SFSpeechRecognitionTask");
+    let apple = extract_member_surface(&body);
+    let ours = references_in_bridge(&apple);
+    let omitted = omitted_set([
+        // Inspection accessors not surfaced in v0.1 — the bridge is
+        // synchronous-blocking, so the caller never sees the SFSpeechRecognitionTask.
+        "state",
+        "finishing",
+        "isFinishing",
+        "finish",
+        "cancelled",
+        "isCancelled",
+        "error",
+        // Delegate callbacks (SFSpeechRecognitionTaskDelegate protocol);
+        // streaming + partial-result callbacks land in v0.2.
+        "speechRecognitionDidDetectSpeech",
+        "speechRecognitionTask",
+        "speechRecognitionTaskFinishedReadingAudio",
+        "speechRecognitionTaskWasCancelled",
+    ]);
+    report("SFSpeechRecognitionTask", &apple, &ours, &omitted);
+}
