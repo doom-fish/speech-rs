@@ -1,0 +1,6 @@
+/target
+/swift-bridge/.build
+/swift-bridge/.swiftpm
+/swift-bridge/Package.resolved
+Cargo.lock
+.DS_Store
