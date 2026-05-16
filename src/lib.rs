@@ -26,12 +26,18 @@ pub use error::{AuthorizationStatus, SpeechError};
 pub use live::{LiveRecognition, LiveUpdate};
 
 #[cfg(feature = "recognize_url")]
-pub use recognizer::{RecognitionResult, SpeechRecognizer, TranscriptionSegment};
+pub use recognizer::{
+    RecognitionMetadata, RecognitionResult, RecognitionWithMetadata, SpeechRecognizer,
+    TranscriptionSegment,
+};
 
 /// Common imports.
 pub mod prelude {
     pub use crate::error::{AuthorizationStatus, SpeechError};
     pub use crate::live::{LiveRecognition, LiveUpdate};
     #[cfg(feature = "recognize_url")]
-    pub use crate::recognizer::{RecognitionResult, SpeechRecognizer, TranscriptionSegment};
+    pub use crate::recognizer::{
+        RecognitionMetadata, RecognitionResult, RecognitionWithMetadata, SpeechRecognizer,
+        TranscriptionSegment,
+    };
 }

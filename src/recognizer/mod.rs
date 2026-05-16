@@ -226,4 +226,128 @@ impl SpeechRecognizer {
             segments,
         })
     }
+
+    /// Like [`Self::recognize_in_path`] but also returns Apple's
+    /// speech-recognition metadata: speaking rate, average pause duration,
+    /// speech start timestamp, speech duration.
+    ///
+    /// # Errors
+    ///
+    /// See [`Self::recognize_in_path`].
+    pub fn recognize_in_path_with_metadata(
+        &self,
+        path: impl AsRef<Path>,
+    ) -> Result<RecognitionWithMetadata, SpeechError> {
+        let path_str = path
+            .as_ref()
+            .to_str()
+            .ok_or_else(|| SpeechError::InvalidArgument("non-UTF-8 path".into()))?;
+        let path_c = CString::new(path_str)
+            .map_err(|e| SpeechError::InvalidArgument(format!("path NUL byte: {e}")))?;
+
+        let locale_p = self.locale_id.as_ref().map_or(ptr::null(), |c| c.as_ptr());
+
+        let mut transcript_raw: *mut c_char = ptr::null_mut();
+        let mut segments_raw: *mut c_void = ptr::null_mut();
+        let mut segment_count: usize = 0;
+        let mut meta = ffi::RecognitionMetadataRaw {
+            has_metadata: false,
+            speaking_rate: 0.0,
+            average_pause_duration: 0.0,
+            speech_start_timestamp: 0.0,
+            speech_duration: 0.0,
+        };
+        let mut err_msg: *mut c_char = ptr::null_mut();
+
+        let status = unsafe {
+            ffi::sp_recognize_url_with_metadata(
+                path_c.as_ptr(),
+                locale_p,
+                &mut transcript_raw,
+                &mut segments_raw,
+                &mut segment_count,
+                &mut meta,
+                &mut err_msg,
+            )
+        };
+        if status != ffi::status::OK {
+            return Err(unsafe { from_swift(status, err_msg) });
+        }
+
+        let transcript = if transcript_raw.is_null() {
+            String::new()
+        } else {
+            let s = unsafe { core::ffi::CStr::from_ptr(transcript_raw) }
+                .to_string_lossy()
+                .into_owned();
+            unsafe { ffi::sp_string_free(transcript_raw) };
+            s
+        };
+        let segments = if segments_raw.is_null() || segment_count == 0 {
+            Vec::new()
+        } else {
+            let typed = segments_raw.cast::<ffi::TranscriptionSegmentRaw>();
+            let mut v = Vec::with_capacity(segment_count);
+            for i in 0..segment_count {
+                let raw = unsafe { &*typed.add(i) };
+                let text = if raw.text.is_null() {
+                    String::new()
+                } else {
+                    unsafe { core::ffi::CStr::from_ptr(raw.text) }
+                        .to_string_lossy()
+                        .into_owned()
+                };
+                v.push(TranscriptionSegment {
+                    text,
+                    confidence: raw.confidence,
+                    timestamp: raw.timestamp,
+                    duration: raw.duration,
+                });
+            }
+            unsafe { ffi::sp_transcription_segments_free(segments_raw, segment_count) };
+            v
+        };
+
+        let metadata = if meta.has_metadata {
+            Some(RecognitionMetadata {
+                speaking_rate: meta.speaking_rate,
+                average_pause_duration: meta.average_pause_duration,
+                speech_start_timestamp: meta.speech_start_timestamp,
+                speech_duration: meta.speech_duration,
+            })
+        } else {
+            None
+        };
+
+        Ok(RecognitionWithMetadata {
+            result: RecognitionResult {
+                transcript,
+                segments,
+            },
+            metadata,
+        })
+    }
+}
+
+/// Voice / pacing analytics returned by macOS 11+ Speech.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecognitionMetadata {
+    /// Words per minute (or roughly equivalent unit).
+    pub speaking_rate: f64,
+    /// Mean inter-word pause (seconds).
+    pub average_pause_duration: f64,
+    /// Offset (seconds) of detected speech start within the audio.
+    pub speech_start_timestamp: f64,
+    /// Total seconds of detected speech.
+    pub speech_duration: f64,
+}
+
+/// Result + optional metadata from
+/// [`SpeechRecognizer::recognize_in_path_with_metadata`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecognitionWithMetadata {
+    pub result: RecognitionResult,
+    /// `None` on older macOS where `SFSpeechRecognitionMetadata` isn't
+    /// available, or when the recogniser didn't populate it.
+    pub metadata: Option<RecognitionMetadata>,
 }

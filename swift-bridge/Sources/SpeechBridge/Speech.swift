@@ -226,6 +226,123 @@ public func sp_transcription_segments_free(_ array: UnsafeMutableRawPointer?, _ 
     typed.deallocate()
 }
 
+// MARK: - v0.3: Recognition metadata
+
+@frozen
+public struct SPRecognitionMetadataRaw {
+    public var has_metadata: Bool
+    public var speaking_rate: Double
+    public var average_pause_duration: Double
+    public var speech_start_timestamp: Double
+    public var speech_duration: Double
+}
+
+/// Variant of sp_recognize_url that also writes per-result speech-
+/// recognition metadata. `outMetadata` may be NULL.
+@_cdecl("sp_recognize_url_with_metadata")
+public func sp_recognize_url_with_metadata(
+    _ audioPath: UnsafePointer<CChar>,
+    _ localeId: UnsafePointer<CChar>?,
+    _ outTranscript: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>,
+    _ outSegments: UnsafeMutablePointer<UnsafeMutableRawPointer?>,
+    _ outSegmentCount: UnsafeMutablePointer<Int>,
+    _ outMetadata: UnsafeMutableRawPointer?,
+    _ outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
+) -> Int32 {
+    let path = String(cString: audioPath)
+    let locale: String
+    if let p = localeId {
+        locale = String(cString: p)
+    } else {
+        locale = Locale.current.identifier
+    }
+    let url = URL(fileURLWithPath: path)
+    guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: locale)),
+          recognizer.isAvailable else {
+        outErrorMessage?.pointee = ffiString("recognizer unavailable for locale \(locale)")
+        return SP_RECOGNIZER_UNAVAILABLE
+    }
+
+    let request = SFSpeechURLRecognitionRequest(url: url)
+    request.shouldReportPartialResults = false
+    request.requiresOnDeviceRecognition = true
+
+    let semaphore = DispatchSemaphore(value: 0)
+    var finalResult: SFSpeechRecognitionResult?
+    var finalError: Error?
+
+    let task = recognizer.recognitionTask(with: request) { result, error in
+        if let error = error {
+            finalError = error
+            semaphore.signal()
+            return
+        }
+        if let result = result, result.isFinal {
+            finalResult = result
+            semaphore.signal()
+        }
+    }
+    let waited = semaphore.wait(timeout: .now() + .seconds(60))
+    if waited == .timedOut {
+        task.cancel()
+        outErrorMessage?.pointee = ffiString("recognition timed out after 60s")
+        return SP_TIMED_OUT
+    }
+    if let error = finalError {
+        outErrorMessage?.pointee = ffiString("recognition failed: \(error.localizedDescription)")
+        return SP_RECOGNITION_FAILED
+    }
+    guard let result = finalResult else {
+        outErrorMessage?.pointee = ffiString("recognition produced no result")
+        return SP_RECOGNITION_FAILED
+    }
+
+    let transcription = result.bestTranscription
+    outTranscript.pointee = ffiString(transcription.formattedString)
+
+    // Metadata.
+    if let outMetadata = outMetadata {
+        let typed = outMetadata.assumingMemoryBound(to: SPRecognitionMetadataRaw.self)
+        if #available(macOS 11.0, *), let meta = result.speechRecognitionMetadata {
+            typed.pointee = SPRecognitionMetadataRaw(
+                has_metadata: true,
+                speaking_rate: meta.speakingRate,
+                average_pause_duration: meta.averagePauseDuration,
+                speech_start_timestamp: meta.speechStartTimestamp,
+                speech_duration: meta.speechDuration
+            )
+        } else {
+            typed.pointee = SPRecognitionMetadataRaw(
+                has_metadata: false,
+                speaking_rate: 0,
+                average_pause_duration: 0,
+                speech_start_timestamp: 0,
+                speech_duration: 0
+            )
+        }
+    }
+
+    let segments = transcription.segments
+    let count = segments.count
+    if count == 0 {
+        outSegments.pointee = nil
+        outSegmentCount.pointee = 0
+        return SP_OK
+    }
+    let buffer = UnsafeMutablePointer<SPTranscriptionSegmentRaw>.allocate(capacity: count)
+    for (i, seg) in segments.enumerated() {
+        buffer.advanced(by: i).initialize(to: SPTranscriptionSegmentRaw(
+            text: ffiString(seg.substring),
+            confidence: seg.confidence,
+            timestamp: seg.timestamp,
+            duration: seg.duration
+        ))
+    }
+    outSegments.pointee = UnsafeMutableRawPointer(buffer)
+    outSegmentCount.pointee = count
+    return SP_OK
+}
+
 // MARK: - v0.2: Live audio-buffer streaming
 
 /// Result handler for the live streaming API. Called with each partial

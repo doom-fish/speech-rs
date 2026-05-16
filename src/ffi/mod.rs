@@ -33,6 +33,16 @@ extern "C" {
 
     pub fn sp_transcription_segments_free(array: *mut c_void, count: usize);
 
+    pub fn sp_recognize_url_with_metadata(
+        audio_path: *const c_char,
+        locale_id: *const c_char,
+        out_transcript: *mut *mut c_char,
+        out_segments: *mut *mut c_void,
+        out_segment_count: *mut usize,
+        out_metadata: *mut RecognitionMetadataRaw,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+
     pub fn sp_live_recognition_start(
         locale_id: *const c_char,
         callback: LiveCallback,
@@ -40,6 +50,15 @@ extern "C" {
         out_error_message: *mut *mut c_char,
     ) -> *mut c_void;
     pub fn sp_live_recognition_stop(token: *mut c_void);
+}
+
+#[repr(C)]
+pub struct RecognitionMetadataRaw {
+    pub has_metadata: bool,
+    pub speaking_rate: f64,
+    pub average_pause_duration: f64,
+    pub speech_start_timestamp: f64,
+    pub speech_duration: f64,
 }
 
 pub type LiveCallback = unsafe extern "C" fn(
