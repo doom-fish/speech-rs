@@ -327,6 +327,77 @@ impl SpeechRecognizer {
             metadata,
         })
     }
+
+    /// Recognise audio at `path` against a custom on-device language
+    /// model built with `SFSpeechLanguageModel.prepareCustomLanguageModelForUrl`.
+    ///
+    /// `language_model` is the path to a generated language-model
+    /// file (`.bin`). `vocabulary` is an optional path to a vocab
+    /// file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SpeechError::RecognizerUnavailable`] /
+    /// [`SpeechError::InvalidArgument`].
+    pub fn recognize_in_path_with_custom_model(
+        &self,
+        audio_path: impl AsRef<Path>,
+        language_model: impl AsRef<Path>,
+        vocabulary: Option<&Path>,
+    ) -> Result<String, SpeechError> {
+        let a = audio_path
+            .as_ref()
+            .to_str()
+            .ok_or_else(|| SpeechError::InvalidArgument("non-UTF-8 audio path".into()))?;
+        let lm = language_model
+            .as_ref()
+            .to_str()
+            .ok_or_else(|| SpeechError::InvalidArgument("non-UTF-8 LM path".into()))?;
+        let a_c = CString::new(a)
+            .map_err(|e| SpeechError::InvalidArgument(format!("audio path NUL: {e}")))?;
+        let lm_c = CString::new(lm)
+            .map_err(|e| SpeechError::InvalidArgument(format!("LM path NUL: {e}")))?;
+        let vocab_c = match vocabulary {
+            Some(v) => {
+                let s = v
+                    .to_str()
+                    .ok_or_else(|| SpeechError::InvalidArgument("non-UTF-8 vocab path".into()))?;
+                Some(
+                    CString::new(s)
+                        .map_err(|e| SpeechError::InvalidArgument(format!("vocab path NUL: {e}")))?,
+                )
+            }
+            None => None,
+        };
+        let locale_p = self.locale_id.as_ref().map_or(ptr::null(), |c| c.as_ptr());
+        let vocab_p = vocab_c.as_ref().map_or(ptr::null(), |c| c.as_ptr());
+
+        let mut transcript_raw: *mut c_char = ptr::null_mut();
+        let mut err_msg: *mut c_char = ptr::null_mut();
+        let status = unsafe {
+            ffi::sp_recognize_url_with_custom_model(
+                a_c.as_ptr(),
+                locale_p,
+                lm_c.as_ptr(),
+                vocab_p,
+                &mut transcript_raw,
+                &mut err_msg,
+            )
+        };
+        if status != ffi::status::OK {
+            return Err(unsafe { from_swift(status, err_msg) });
+        }
+        let transcript = if transcript_raw.is_null() {
+            String::new()
+        } else {
+            let s = unsafe { core::ffi::CStr::from_ptr(transcript_raw) }
+                .to_string_lossy()
+                .into_owned();
+            unsafe { ffi::sp_string_free(transcript_raw) };
+            s
+        };
+        Ok(transcript)
+    }
 }
 
 /// Voice / pacing analytics returned by macOS 11+ Speech.

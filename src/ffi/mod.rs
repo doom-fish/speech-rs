@@ -52,6 +52,15 @@ extern "C" {
     pub fn sp_live_recognition_stop(token: *mut c_void);
     pub fn sp_live_recognition_end_audio(token: *mut c_void);
     pub fn sp_live_recognition_cancel(token: *mut c_void);
+
+    pub fn sp_recognize_url_with_custom_model(
+        audio_path: *const c_char,
+        locale_id: *const c_char,
+        language_model_path: *const c_char,
+        vocabulary_path: *const c_char,
+        out_transcript: *mut *mut c_char,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
 }
 
 #[repr(C)]

@@ -470,3 +470,79 @@ public func sp_live_recognition_cancel(_ token: UnsafeMutableRawPointer?) {
     session.audioEngine.inputNode.removeTap(onBus: 0)
     session.task?.cancel()
 }
+
+// MARK: - Custom language model (v0.5)
+
+@_cdecl("sp_recognize_url_with_custom_model")
+public func sp_recognize_url_with_custom_model(
+    _ audioPath: UnsafePointer<CChar>,
+    _ localeId: UnsafePointer<CChar>?,
+    _ languageModelPath: UnsafePointer<CChar>,
+    _ vocabularyPath: UnsafePointer<CChar>?,
+    _ outTranscript: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>,
+    _ outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
+) -> Int32 {
+    if #unavailable(macOS 14.0) {
+        outErrorMessage?.pointee = ffiString("custom language model requires macOS 14+")
+        return SP_RECOGNIZER_UNAVAILABLE
+    }
+    if #available(macOS 14.0, *) {
+        let audio = String(cString: audioPath)
+        let lmPath = String(cString: languageModelPath)
+        let locale: String
+        if let p = localeId {
+            locale = String(cString: p)
+        } else {
+            locale = Locale.current.identifier
+        }
+        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: locale)),
+              recognizer.isAvailable else {
+            outErrorMessage?.pointee = ffiString("recognizer unavailable for locale \(locale)")
+            return SP_RECOGNIZER_UNAVAILABLE
+        }
+        let url = URL(fileURLWithPath: audio)
+        let request = SFSpeechURLRecognitionRequest(url: url)
+        request.requiresOnDeviceRecognition = true
+
+        let lmConfig: SFSpeechLanguageModel.Configuration
+        if let vpath = vocabularyPath {
+            lmConfig = SFSpeechLanguageModel.Configuration(
+                languageModel: URL(fileURLWithPath: lmPath),
+                vocabulary: URL(fileURLWithPath: String(cString: vpath))
+            )
+        } else {
+            lmConfig = SFSpeechLanguageModel.Configuration(
+                languageModel: URL(fileURLWithPath: lmPath)
+            )
+        }
+        request.customizedLanguageModel = lmConfig
+
+        let sem = DispatchSemaphore(value: 0)
+        var transcript: String? = nil
+        var failure: String? = nil
+        let task = recognizer.recognitionTask(with: request) { result, error in
+            if let error = error {
+                failure = error.localizedDescription
+                sem.signal()
+                return
+            }
+            guard let r = result else { return }
+            if r.isFinal {
+                transcript = r.bestTranscription.formattedString
+                sem.signal()
+            }
+        }
+        _ = sem.wait(timeout: .now() + 120)
+        task.cancel()
+        if let f = failure {
+            outErrorMessage?.pointee = ffiString("recognition failed: \(f)")
+            return SP_AUDIO_LOAD_FAILED
+        }
+        if let t = transcript {
+            outTranscript.pointee = ffiString(t)
+            return SP_OK
+        }
+        outTranscript.pointee = ffiString("")
+    }
+    return SP_OK
+}
