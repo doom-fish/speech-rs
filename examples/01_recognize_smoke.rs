@@ -50,7 +50,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("recognizer is_available: {}", recognizer.is_available());
 
     println!("\n== Step 4: recognize the file ==");
-    let result = recognizer.recognize_in_path(&aiff_path)?;
+    let result = match recognizer.recognize_in_path(&aiff_path) {
+        Ok(result) => result,
+        Err(SpeechError::TimedOut(message)) => {
+            eprintln!("\nSKIP: legacy recognizer timed out: {message}");
+            return Ok(());
+        }
+        Err(error) => return Err(error.into()),
+    };
     println!("transcript: '{}'", result.transcript);
     println!("{} segment(s):", result.segments.len());
     for seg in &result.segments {

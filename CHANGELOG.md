@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.7.0] - 2026-05-16
+
+### Added
+
+- Added macOS 26 `DictationTranscriber` support via a new Swift bridge area:
+  - `DictationTranscriber`
+  - `DictationPreset`
+  - `DictationTranscriberOptions`
+  - `DictationTranscriptionResult`
+  - locale discovery helpers (`supported_locales`, `installed_locales`, `supported_locale_equivalent_to`)
+  - selected-locale and compatible-audio-format inspection
+- Added `examples/03_dictation_smoke.rs` for file-based dictation smoke testing.
+- Added `tests/dictation_tests.rs` plus expanded `tests/api_coverage.rs` to verify `SFSpeechRecognitionTaskDelegate` coverage and macOS 26 dictation symbols.
+- Added `COVERAGE.md` for the Wave-C audited Speech.framework surface.
+
+### Changed
+
+- Bumped crate version from `0.6.0` to `0.7.0`.
+- Updated docs to reflect the audited Speech surface and the SDK's `DictationTranscriber` naming.
+- Made `examples/01_recognize_smoke.rs` degrade gracefully when the legacy recognizer times out in headless environments.
+- Updated the Swift build to detect the macOS 26 SDK and compile dictation bindings conditionally.
+
 ## [0.6.0] - 2026-05-16
 
 ### Added

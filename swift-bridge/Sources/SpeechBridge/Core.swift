@@ -104,7 +104,7 @@ struct SPXRecognizerPayload: Codable {
   var queue: SPXQueuePayload?
 }
 
-struct SPXLanguageModelConfigurationPayload: Codable {
+struct SPXLanguageModelConfigurationPayload: Codable, Sendable {
   var languageModelPath: String
   var vocabularyPath: String?
   var weight: Double?

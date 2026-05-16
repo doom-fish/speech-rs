@@ -2,7 +2,7 @@
 
 Safe Rust bindings for Apple's [Speech](https://developer.apple.com/documentation/speech) framework on macOS.
 
-> **Status:** v0.6.0 covers all public `Speech.framework` classes exposed by the macOS SDK: `SFSpeechRecognizer`, URL and audio-buffer requests, recognition tasks and delegate events, transcriptions and segments, recognition metadata, voice analytics, and custom language model preparation.
+> **Status:** v0.7.0 audits the classic `SFSpeech*` recognition surface and adds macOS 26 `DictationTranscriber` support (the Xcode 26.2 SDK name for the dictation API sometimes described as “DictationExtension”).
 
 ## Quick start
 
@@ -47,21 +47,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - `RecognitionTask` / `AudioBufferRecognitionTask` with RAII cleanup, task state inspection, delegate events, cancellation, finishing, and manual PCM/sample-buffer appends
 - `DetailedRecognitionResult`, `Transcription`, `TranscriptionSegmentDetails`, `DetailedRecognitionMetadata`, `VoiceAnalytics`, `AcousticFeature`
 - `SpeechLanguageModel::prepare_custom_language_model*` plus `LanguageModelConfiguration`
+- `DictationTranscriber` with presets or explicit dictation options, locale discovery, compatible-audio-format inspection, and file-based transcription results
 - `RecognizerAvailabilityObserver` for `SFSpeechRecognizerDelegate`
 
 ## Authorization
 
 `SFSpeechRecognizer` requires `NSSpeechRecognitionUsageDescription` in your app's `Info.plist` plus an authorization request. CLI binaries without a proper bundle typically get `Denied`; the smoke example exits cleanly when authorization is unavailable.
 
-## Smoke example
+## Smoke examples
 
 Run the end-to-end framework smoke test with:
 
 ```bash
 cargo run --all-features --example 02_framework_smoke
+cargo run --all-features --example 03_dictation_smoke
 ```
 
-It exercises locale enumeration, recognizer configuration, native audio-format discovery, async task delegates, and synchronous URL recognition. When authorization is granted, it synthesizes a short AIFF under `target/` and verifies recognition end-to-end.
+`02_framework_smoke` exercises locale enumeration, recognizer configuration, native audio-format discovery, async task delegates, and synchronous URL recognition. `03_dictation_smoke` exercises the macOS 26 `DictationTranscriber` bridge. Both synthesize a short AIFF under `target/` and skip cleanly when authorization or OS support is unavailable.
 
 ## License
 

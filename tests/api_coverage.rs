@@ -48,6 +48,24 @@ fn read_header(name: &str) -> String {
     )))
 }
 
+fn read_swiftinterface() -> String {
+    let module_dir = sdk_root()
+        .join("System/Library/Frameworks/Speech.framework/Versions/A/Modules/Speech.swiftmodule");
+    let mut files = std::fs::read_dir(&module_dir)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "swiftinterface"))
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.contains("apple-macos"))
+        })
+        .collect::<Vec<_>>();
+    files.sort();
+    read(files.first().expect("Speech macOS swiftinterface"))
+}
+
 /// Extract the `@interface TypeName ... @end` block (no protocol blocks).
 fn extract_interface(header: &str, type_name: &str) -> String {
     let needle = regex_lite::Regex::new(&format!(r"@interface\s+{type_name}\b")).unwrap();
@@ -169,7 +187,7 @@ fn sf_speech_recognition_request_base_coverage() {
     let body = extract_interface(&header, "SFSpeechRecognitionRequest");
     let apple = extract_member_surface(&body);
     let ours = references_in_bridge(&apple);
-    let omitted = omitted_set(["customizedLanguageModel"]);
+    let omitted = omitted_set::<0>([]);
     report("SFSpeechRecognitionRequest", &apple, &ours, &omitted);
 }
 
@@ -291,4 +309,84 @@ fn sf_speech_language_model_coverage() {
     let ours = references_in_bridge(&apple);
     let omitted = omitted_set::<0>([]);
     report("SFSpeechLanguageModel", &apple, &ours, &omitted);
+}
+
+#[test]
+fn sf_speech_recognition_task_delegate_coverage() {
+    let header = read_header("SFSpeechRecognitionTask");
+    let bridge = read_bridge();
+    for selector in [
+        "speechRecognitionDidDetectSpeech",
+        "didHypothesizeTranscription",
+        "didFinishRecognition",
+        "speechRecognitionTaskFinishedReadingAudio",
+        "speechRecognitionTaskWasCancelled",
+        "didFinishSuccessfully",
+        "didProcessAudioDuration",
+    ] {
+        assert!(
+            header.contains(selector),
+            "missing selector in header: {selector}"
+        );
+    }
+    for bridge_token in [
+        "didDetectSpeech",
+        "didHypothesizeTranscription",
+        "didFinishRecognition",
+        "finishedReadingAudio",
+        "wasCancelled",
+        "didFinishSuccessfully",
+        "didProcessAudioDuration",
+    ] {
+        assert!(
+            bridge.contains(bridge_token),
+            "missing delegate bridge token: {bridge_token}"
+        );
+    }
+}
+
+#[test]
+fn dictation_transcriber_coverage() {
+    let interface = read_swiftinterface();
+    let bridge = read_bridge();
+
+    for sdk_symbol in [
+        "final public class DictationTranscriber",
+        "public static var supportedLocales",
+        "public static var installedLocales",
+        "supportedLocale(equivalentTo",
+        "final public var selectedLocales",
+        "final public var availableCompatibleAudioFormats",
+        "final public var results",
+        "public struct Result",
+        "public let alternatives",
+        "public let resultsFinalizationTime",
+    ] {
+        assert!(
+            interface.contains(sdk_symbol),
+            "missing dictation SDK symbol: {sdk_symbol}"
+        );
+    }
+
+    for bridge_symbol in [
+        "DictationTranscriber",
+        "shortDictation",
+        "progressiveShortDictation",
+        "longDictation",
+        "progressiveLongDictation",
+        "timeIndexedLongDictation",
+        "supportedLocales",
+        "installedLocales",
+        "supportedLocale(equivalentTo",
+        "selectedLocales",
+        "availableCompatibleAudioFormats",
+        "resultsFinalizationTime",
+        "SPXDictationResultPayload",
+        "sp_dictation_transcribe_url_json",
+    ] {
+        assert!(
+            bridge.contains(bridge_symbol),
+            "missing dictation bridge symbol: {bridge_symbol}"
+        );
+    }
 }

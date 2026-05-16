@@ -168,6 +168,36 @@ extern "C" {
         ignores_cache: bool,
         out_error_message: *mut *mut c_char,
     ) -> i32;
+
+    pub fn sp_dictation_supported_locales_json(
+        out_json: *mut *mut c_char,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_dictation_installed_locales_json(
+        out_json: *mut *mut c_char,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_dictation_supported_locale_identifier(
+        locale_id: *const c_char,
+        out_locale_id: *mut *mut c_char,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_dictation_selected_locales_json(
+        configuration_json: *const c_char,
+        out_json: *mut *mut c_char,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_dictation_available_audio_formats_json(
+        configuration_json: *const c_char,
+        out_json: *mut *mut c_char,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_dictation_transcribe_url_json(
+        audio_path: *const c_char,
+        configuration_json: *const c_char,
+        out_json: *mut *mut c_char,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
 }
 
 #[repr(C)]

@@ -7,13 +7,14 @@
 //! Safe Rust bindings for Apple's
 //! [Speech](https://developer.apple.com/documentation/speech) framework.
 //!
-//! This crate now covers all public `Speech.framework` classes on macOS,
-//! including URL and audio-buffer requests, delegate-driven task events,
-//! detailed transcription metadata, voice analytics, and custom language
-//! model preparation.
+//! This crate audits the classic `SFSpeech*` recognition surface on macOS and
+//! adds the macOS 26 `DictationTranscriber` bridge alongside URL and audio-buffer
+//! requests, delegate-driven task events, detailed transcription metadata, voice
+//! analytics, and custom language model preparation.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub mod dictation;
 pub mod error;
 pub mod ffi;
 pub mod language_model;
@@ -25,6 +26,11 @@ pub mod transcription;
 
 pub mod live;
 
+pub use dictation::{
+    DictationAudioTimeRange, DictationContentHint, DictationPreset, DictationReportingOption,
+    DictationResultAttributeOption, DictationTranscriber, DictationTranscriberOptions,
+    DictationTranscriptionOption, DictationTranscriptionResult,
+};
 pub use error::{
     AuthorizationStatus, SpeechError, SpeechFrameworkError, SpeechFrameworkErrorCode,
     SPEECH_ERROR_DOMAIN,
@@ -50,6 +56,11 @@ pub use transcription::{
 
 /// Common imports.
 pub mod prelude {
+    pub use crate::dictation::{
+        DictationAudioTimeRange, DictationContentHint, DictationPreset, DictationReportingOption,
+        DictationResultAttributeOption, DictationTranscriber, DictationTranscriberOptions,
+        DictationTranscriptionOption, DictationTranscriptionResult,
+    };
     pub use crate::error::{
         AuthorizationStatus, SpeechError, SpeechFrameworkError, SpeechFrameworkErrorCode,
         SPEECH_ERROR_DOMAIN,

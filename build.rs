@@ -1,10 +1,31 @@
 use std::env;
 use std::process::Command;
 
+fn detect_sdk_major_version() -> Option<u32> {
+    let output = Command::new("xcrun")
+        .args(["--sdk", "macosx", "--show-sdk-version"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let version = String::from_utf8_lossy(&output.stdout);
+    version.trim().split('.').next()?.parse().ok()
+}
+
+fn swift_define_flags(sdk_version: Option<u32>) -> Vec<String> {
+    let mut flags = Vec::new();
+    if sdk_version.is_some_and(|version| version >= 26) {
+        flags.push("-DSPEECH_HAS_MACOS26_SDK".to_string());
+    }
+    flags
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=DOCS_RS");
     println!("cargo:rerun-if-env-changed=DEVELOPER_DIR");
+    println!("cargo:rerun-if-env-changed=SDKROOT");
 
     if env::var("DOCS_RS").is_ok() {
         return;
@@ -28,7 +49,10 @@ fn main() {
         other => panic!("speech: unsupported target arch '{other}'"),
     };
 
-    let swift_args = vec![
+    let sdk_version = detect_sdk_major_version();
+    let define_flags = swift_define_flags(sdk_version);
+
+    let mut swift_args = vec![
         "build",
         "-c",
         "release",
@@ -39,6 +63,10 @@ fn main() {
         "--scratch-path",
         &swift_build_dir,
     ];
+    for flag in &define_flags {
+        swift_args.push("-Xswiftc");
+        swift_args.push(flag);
+    }
 
     let output = Command::new("swift")
         .args(&swift_args)
@@ -67,6 +95,10 @@ fn main() {
     if let Ok(output) = Command::new("xcode-select").arg("-p").output() {
         if output.status.success() {
             let xcode_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let swift_55_lib_path = format!(
+                "{xcode_path}/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.5/macosx"
+            );
+            println!("cargo:rustc-link-arg=-Wl,-rpath,{swift_55_lib_path}");
             let swift_lib_path =
                 format!("{xcode_path}/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx");
             println!("cargo:rustc-link-arg=-Wl,-rpath,{swift_lib_path}");
