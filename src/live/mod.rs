@@ -42,11 +42,7 @@ impl Drop for LiveRecognition {
     }
 }
 
-unsafe extern "C" fn trampoline(
-    user_info: *mut c_void,
-    transcript: *const c_char,
-    is_final: bool,
-) {
+unsafe extern "C" fn trampoline(user_info: *mut c_void, transcript: *const c_char, is_final: bool) {
     if user_info.is_null() {
         return;
     }

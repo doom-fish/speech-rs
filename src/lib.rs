@@ -5,39 +5,71 @@
 //! # API Documentation
 //!
 //! Safe Rust bindings for Apple's
-//! [Speech](https://developer.apple.com/documentation/speech) framework
-//! — on-device speech recognition (`SFSpeechRecognizer`) on macOS.
+//! [Speech](https://developer.apple.com/documentation/speech) framework.
 //!
-//! v0.1 ships file-based transcription via `SpeechRecognizer::recognize_in_path`.
-//! Live audio-buffer streaming and partial-result callbacks land in v0.2.
+//! This crate now covers all public `Speech.framework` classes on macOS,
+//! including URL and audio-buffer requests, delegate-driven task events,
+//! detailed transcription metadata, voice analytics, and custom language
+//! model preparation.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub mod error;
 pub mod ffi;
-
-#[cfg(feature = "recognize_url")]
-#[cfg_attr(docsrs, doc(cfg(feature = "recognize_url")))]
+pub mod language_model;
+mod private;
 pub mod recognizer;
+pub mod request;
+pub mod task;
+pub mod transcription;
 
 pub mod live;
 
-pub use error::{AuthorizationStatus, SpeechError};
+pub use error::{
+    AuthorizationStatus, SpeechError, SpeechFrameworkError, SpeechFrameworkErrorCode,
+    SPEECH_ERROR_DOMAIN,
+};
+pub use language_model::{LanguageModelConfiguration, SpeechLanguageModel};
 pub use live::{LiveRecognition, LiveUpdate};
-
-#[cfg(feature = "recognize_url")]
 pub use recognizer::{
     RecognitionMetadata, RecognitionResult, RecognitionWithMetadata, SpeechRecognizer,
     TranscriptionSegment,
 };
+pub use request::{
+    AudioBufferRecognitionRequest, AudioCommonFormat, AudioFormat, CallbackQueue,
+    RecognitionRequestOptions, TaskHint, UrlRecognitionRequest,
+};
+pub use task::{
+    AudioBufferRecognitionTask, RecognitionTask, RecognitionTaskEvent,
+    RecognizerAvailabilityObserver, TaskErrorInfo, TaskState,
+};
+pub use transcription::{
+    AcousticFeature, DetailedRecognitionMetadata, DetailedRecognitionResult, TextRange,
+    Transcription, TranscriptionSegmentDetails, VoiceAnalytics,
+};
 
 /// Common imports.
 pub mod prelude {
-    pub use crate::error::{AuthorizationStatus, SpeechError};
+    pub use crate::error::{
+        AuthorizationStatus, SpeechError, SpeechFrameworkError, SpeechFrameworkErrorCode,
+        SPEECH_ERROR_DOMAIN,
+    };
+    pub use crate::language_model::{LanguageModelConfiguration, SpeechLanguageModel};
     pub use crate::live::{LiveRecognition, LiveUpdate};
-    #[cfg(feature = "recognize_url")]
     pub use crate::recognizer::{
         RecognitionMetadata, RecognitionResult, RecognitionWithMetadata, SpeechRecognizer,
         TranscriptionSegment,
+    };
+    pub use crate::request::{
+        AudioBufferRecognitionRequest, AudioCommonFormat, AudioFormat, CallbackQueue,
+        RecognitionRequestOptions, TaskHint, UrlRecognitionRequest,
+    };
+    pub use crate::task::{
+        AudioBufferRecognitionTask, RecognitionTask, RecognitionTaskEvent,
+        RecognizerAvailabilityObserver, TaskErrorInfo, TaskState,
+    };
+    pub use crate::transcription::{
+        AcousticFeature, DetailedRecognitionMetadata, DetailedRecognitionResult, TextRange,
+        Transcription, TranscriptionSegmentDetails, VoiceAnalytics,
     };
 }

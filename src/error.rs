@@ -33,6 +33,57 @@ impl AuthorizationStatus {
     }
 }
 
+/// `SFSpeechErrorDomain` from `SFErrors.h`.
+pub const SPEECH_ERROR_DOMAIN: &str = "SFSpeechErrorDomain";
+
+/// Known `SFSpeechErrorCode` values from `SFErrors.h`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum SpeechFrameworkErrorCode {
+    InternalServiceError,
+    AudioReadFailed,
+    UndefinedTemplateClassName,
+    MalformedSupplementalModel,
+    Timeout,
+    MissingParameter,
+    Unknown(i64),
+}
+
+impl SpeechFrameworkErrorCode {
+    #[must_use]
+    pub fn from_domain_and_code(domain: &str, code: i64) -> Self {
+        if domain != SPEECH_ERROR_DOMAIN {
+            return Self::Unknown(code);
+        }
+        match code {
+            1 => Self::InternalServiceError,
+            2 => Self::AudioReadFailed,
+            7 => Self::UndefinedTemplateClassName,
+            8 => Self::MalformedSupplementalModel,
+            12 => Self::Timeout,
+            13 => Self::MissingParameter,
+            other => Self::Unknown(other),
+        }
+    }
+}
+
+/// A structured framework error returned by Apple's `Speech.framework`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpeechFrameworkError {
+    pub domain: String,
+    pub code: i64,
+    pub message: String,
+    pub kind: SpeechFrameworkErrorCode,
+}
+
+impl fmt::Display for SpeechFrameworkError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} ({}) [{}]", self.message, self.code, self.domain)
+    }
+}
+
+impl std::error::Error for SpeechFrameworkError {}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SpeechError {
@@ -49,6 +100,8 @@ pub enum SpeechError {
     TimedOut(String),
     /// Caller supplied an invalid argument (e.g. NUL byte in path).
     InvalidArgument(String),
+    /// A structured error returned by `Speech.framework`.
+    Framework(SpeechFrameworkError),
     /// Catch-all for unmapped statuses from the Swift bridge.
     Unknown { code: i32, message: String },
 }
@@ -62,12 +115,20 @@ impl fmt::Display for SpeechError {
             Self::RecognitionFailed(m) => write!(f, "recognition failed: {m}"),
             Self::TimedOut(m) => write!(f, "timed out: {m}"),
             Self::InvalidArgument(m) => write!(f, "invalid argument: {m}"),
+            Self::Framework(error) => write!(f, "speech framework error: {error}"),
             Self::Unknown { code, message } => write!(f, "speech error {code}: {message}"),
         }
     }
 }
 
-impl std::error::Error for SpeechError {}
+impl std::error::Error for SpeechError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Framework(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 pub(crate) unsafe fn from_swift(status: i32, error_str: *mut core::ffi::c_char) -> SpeechError {
     let message = if error_str.is_null() {

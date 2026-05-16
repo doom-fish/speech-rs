@@ -1,8 +1,10 @@
 //! API-surface coverage harness for `speech`.
 //!
 //! Parses Apple's Obj-C headers under `Speech.framework/Headers/` and
-//! verifies the methods/properties we wrap are referenced from our Swift
-//! bridge. Same approach as the other doom-fish crates.
+//! verifies the public Speech symbols we claim to support are referenced from
+//! our Swift bridge sources. Constructor spelling differences (`initWithURL:`
+//! vs `init(url:)`) and purely Rust-side stored configuration fields are
+//! handled via alias mappings or targeted omissions.
 
 #![allow(clippy::cast_precision_loss)]
 
@@ -24,10 +26,20 @@ fn read(path: &PathBuf) -> String {
 }
 
 fn read_bridge() -> String {
-    read(
-        &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("swift-bridge/Sources/SpeechBridge/Speech.swift"),
-    )
+    let bridge_dir =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("swift-bridge/Sources/SpeechBridge");
+    let mut files = std::fs::read_dir(&bridge_dir)
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "swift"))
+        .collect::<Vec<_>>();
+    files.sort();
+    files
+        .into_iter()
+        .map(|path| read(&path))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn read_header(name: &str) -> String {
@@ -53,10 +65,8 @@ fn extract_interface(header: &str, type_name: &str) -> String {
 fn extract_member_surface(interface_body: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
 
-    let method_re = regex_lite::Regex::new(
-        r"(?m)^\s*[+\-]\s*\([^\)]*\)\s*([A-Za-z_][A-Za-z0-9_]*)",
-    )
-    .unwrap();
+    let method_re =
+        regex_lite::Regex::new(r"(?m)^\s*[+\-]\s*\([^\)]*\)\s*([A-Za-z_][A-Za-z0-9_]*)").unwrap();
     for c in method_re.captures_iter(interface_body) {
         out.insert(c[1].to_string());
     }
@@ -77,13 +87,31 @@ fn extract_member_surface(interface_body: &str) -> BTreeSet<String> {
     out
 }
 
+fn extra_patterns(name: &str) -> Vec<String> {
+    match name {
+        "available" => vec![r"\bisAvailable\b".into()],
+        "final" => vec![r"\bisFinal\b".into()],
+        "cancelled" => vec![r"\bisCancelled\b".into()],
+        "finishing" => vec![r"\bisFinishing\b".into()],
+        "initWithLocale" => vec![r"SFSpeechRecognizer\(locale:".into()],
+        "initWithURL" => vec![r"SFSpeechURLRecognitionRequest\(url:".into()],
+        "initWithLanguageModel" => vec![r"Configuration\(languageModel:".into()],
+        "appendAudioPCMBuffer" => vec![r"\bappend\(".into()],
+        "prepareCustomLanguageModelForUrl" => vec![r"\bprepareCustomLanguageModel\(".into()],
+        "recognitionTaskWithRequest" => vec![r"\brecognitionTask\(".into()],
+        _ => Vec::new(),
+    }
+}
+
 fn references_in_bridge(symbols: &BTreeSet<String>) -> BTreeSet<String> {
     let bridge = read_bridge();
     symbols
         .iter()
         .filter(|name| {
-            let pattern = format!(r"\b{}\b", regex_lite::escape(name));
-            regex_lite::Regex::new(&pattern).unwrap().is_match(&bridge)
+            let default_pattern = format!(r"\b{}\b", regex_lite::escape(name));
+            std::iter::once(default_pattern)
+                .chain(extra_patterns(name))
+                .any(|pattern| regex_lite::Regex::new(&pattern).unwrap().is_match(&bridge))
         })
         .cloned()
         .collect()
@@ -125,43 +153,14 @@ fn omitted_set<const N: usize>(items: [&str; N]) -> BTreeSet<String> {
     items.into_iter().map(String::from).collect()
 }
 
-// ---- Tests ----
-
 #[test]
 fn sf_speech_recognizer_coverage() {
     let header = read_header("SFSpeechRecognizer");
     let body = extract_interface(&header, "SFSpeechRecognizer");
     let apple = extract_member_surface(&body);
     let ours = references_in_bridge(&apple);
-    let omitted = omitted_set([
-        "supportedLocales",
-        "init",
-        "initWithLocale",
-        "supportsOnDeviceRecognition",
-        "delegate",
-        "defaultTaskHint",
-        "recognitionTaskWithRequest",
-        "queue",
-        // We use the `isAvailable` getter form, not the bare `available`
-        // property name. Counted via the `getter=isAvailable` rewrite.
-        "available",
-    ]);
+    let omitted = omitted_set(["init"]);
     report("SFSpeechRecognizer", &apple, &ours, &omitted);
-}
-
-#[test]
-fn sf_speech_url_recognition_request_coverage() {
-    let header = read_header("SFSpeechRecognitionRequest");
-    let body = extract_interface(&header, "SFSpeechURLRecognitionRequest");
-    let apple = extract_member_surface(&body);
-    let ours = references_in_bridge(&apple);
-    let omitted = omitted_set([
-        "init",
-        "URL",
-        // Swift bridges `initWithURL:` as `init(url:)`, which is what we use.
-        "initWithURL",
-    ]);
-    report("SFSpeechURLRecognitionRequest", &apple, &ours, &omitted);
 }
 
 #[test]
@@ -170,14 +169,53 @@ fn sf_speech_recognition_request_base_coverage() {
     let body = extract_interface(&header, "SFSpeechRecognitionRequest");
     let apple = extract_member_surface(&body);
     let ours = references_in_bridge(&apple);
-    let omitted = omitted_set([
-        "taskHint",
-        "contextualStrings",
-        "interactionIdentifier",
-        "addsPunctuation",
-        "customizedLanguageModel",
-    ]);
+    let omitted = omitted_set(["customizedLanguageModel"]);
     report("SFSpeechRecognitionRequest", &apple, &ours, &omitted);
+}
+
+#[test]
+fn sf_speech_url_recognition_request_coverage() {
+    let header = read_header("SFSpeechRecognitionRequest");
+    let body = extract_interface(&header, "SFSpeechURLRecognitionRequest");
+    let apple = extract_member_surface(&body);
+    let ours = references_in_bridge(&apple);
+    let omitted = omitted_set(["init", "URL"]);
+    report("SFSpeechURLRecognitionRequest", &apple, &ours, &omitted);
+}
+
+#[test]
+fn sf_speech_audio_buffer_recognition_request_coverage() {
+    let header = read_header("SFSpeechRecognitionRequest");
+    let body = extract_interface(&header, "SFSpeechAudioBufferRecognitionRequest");
+    let apple = extract_member_surface(&body);
+    let ours = references_in_bridge(&apple);
+    let omitted = omitted_set::<0>([]);
+    report(
+        "SFSpeechAudioBufferRecognitionRequest",
+        &apple,
+        &ours,
+        &omitted,
+    );
+}
+
+#[test]
+fn sf_speech_recognition_result_coverage() {
+    let header = read_header("SFSpeechRecognitionResult");
+    let body = extract_interface(&header, "SFSpeechRecognitionResult");
+    let apple = extract_member_surface(&body);
+    let ours = references_in_bridge(&apple);
+    let omitted = omitted_set::<0>([]);
+    report("SFSpeechRecognitionResult", &apple, &ours, &omitted);
+}
+
+#[test]
+fn sf_speech_recognition_metadata_coverage() {
+    let header = read_header("SFSpeechRecognitionMetadata");
+    let body = extract_interface(&header, "SFSpeechRecognitionMetadata");
+    let apple = extract_member_surface(&body);
+    let ours = references_in_bridge(&apple);
+    let omitted = omitted_set::<0>([]);
+    report("SFSpeechRecognitionMetadata", &apple, &ours, &omitted);
 }
 
 #[test]
@@ -186,10 +224,7 @@ fn sf_transcription_coverage() {
     let body = extract_interface(&header, "SFTranscription");
     let apple = extract_member_surface(&body);
     let ours = references_in_bridge(&apple);
-    let omitted = omitted_set([
-        "speakingRate",
-        "averagePauseDuration",
-    ]);
+    let omitted = omitted_set::<0>([]);
     report("SFTranscription", &apple, &ours, &omitted);
 }
 
@@ -199,32 +234,8 @@ fn sf_transcription_segment_coverage() {
     let body = extract_interface(&header, "SFTranscriptionSegment");
     let apple = extract_member_surface(&body);
     let ours = references_in_bridge(&apple);
-    let omitted = omitted_set([
-        "substringRange",
-        "alternativeSubstrings",
-        "voiceAnalytics",
-    ]);
+    let omitted = omitted_set::<0>([]);
     report("SFTranscriptionSegment", &apple, &ours, &omitted);
-}
-
-#[test]
-fn sf_speech_recognition_result_coverage() {
-    let header = read_header("SFSpeechRecognitionResult");
-    let body = extract_interface(&header, "SFSpeechRecognitionResult");
-    let apple = extract_member_surface(&body);
-    let ours = references_in_bridge(&apple);
-    let omitted = omitted_set([
-        // Multi-hypothesis transcripts; we only surface the best one in v0.1.
-        "transcriptions",
-        // SFSpeechRecognitionMetadata exposes audio analytics, lattice
-        // confidence, and speaking-rate measurements; v0.2 will surface it
-        // as a typed RecognitionMetadata struct.
-        "speechRecognitionMetadata",
-        // The bare `final` keyword conflicts with Swift; we read it via the
-        // `getter=isFinal` rewrite handled separately by the harness.
-        "final",
-    ]);
-    report("SFSpeechRecognitionResult", &apple, &ours, &omitted);
 }
 
 #[test]
@@ -233,22 +244,51 @@ fn sf_speech_recognition_task_coverage() {
     let body = extract_interface(&header, "SFSpeechRecognitionTask");
     let apple = extract_member_surface(&body);
     let ours = references_in_bridge(&apple);
-    let omitted = omitted_set([
-        // Inspection accessors not surfaced in v0.1 — the bridge is
-        // synchronous-blocking, so the caller never sees the SFSpeechRecognitionTask.
-        "state",
-        "finishing",
-        "isFinishing",
-        "finish",
-        "cancelled",
-        "isCancelled",
-        "error",
-        // Delegate callbacks (SFSpeechRecognitionTaskDelegate protocol);
-        // streaming + partial-result callbacks land in v0.2.
-        "speechRecognitionDidDetectSpeech",
-        "speechRecognitionTask",
-        "speechRecognitionTaskFinishedReadingAudio",
-        "speechRecognitionTaskWasCancelled",
-    ]);
+    let omitted = omitted_set::<0>([]);
     report("SFSpeechRecognitionTask", &apple, &ours, &omitted);
+}
+
+#[test]
+fn sf_voice_analytics_coverage() {
+    let header = read_header("SFVoiceAnalytics");
+    let body = extract_interface(&header, "SFVoiceAnalytics");
+    let apple = extract_member_surface(&body);
+    let ours = references_in_bridge(&apple);
+    let omitted = omitted_set::<0>([]);
+    report("SFVoiceAnalytics", &apple, &ours, &omitted);
+}
+
+#[test]
+fn sf_acoustic_feature_coverage() {
+    let header = read_header("SFVoiceAnalytics");
+    let body = extract_interface(&header, "SFAcousticFeature");
+    let apple = extract_member_surface(&body);
+    let ours = references_in_bridge(&apple);
+    let omitted = omitted_set::<0>([]);
+    report("SFAcousticFeature", &apple, &ours, &omitted);
+}
+
+#[test]
+fn sf_speech_language_model_configuration_coverage() {
+    let header = read_header("SFSpeechLanguageModel");
+    let body = extract_interface(&header, "SFSpeechLanguageModelConfiguration");
+    let apple = extract_member_surface(&body);
+    let ours = references_in_bridge(&apple);
+    let omitted = omitted_set(["languageModel", "vocabulary", "weight"]);
+    report(
+        "SFSpeechLanguageModelConfiguration",
+        &apple,
+        &ours,
+        &omitted,
+    );
+}
+
+#[test]
+fn sf_speech_language_model_coverage() {
+    let header = read_header("SFSpeechLanguageModel");
+    let body = extract_interface(&header, "SFSpeechLanguageModel");
+    let apple = extract_member_surface(&body);
+    let ours = references_in_bridge(&apple);
+    let omitted = omitted_set::<0>([]);
+    report("SFSpeechLanguageModel", &apple, &ours, &omitted);
 }

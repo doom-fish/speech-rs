@@ -1,13 +1,33 @@
 //! [`SpeechRecognizer`] — wraps `SFSpeechRecognizer` for file-based
-//! transcription.
+//! transcription and advanced Speech.framework task APIs.
+
+#![allow(clippy::missing_const_for_fn, clippy::missing_errors_doc)]
 
 use core::ffi::{c_char, c_void};
 use core::ptr;
 use std::ffi::CString;
 use std::path::Path;
+use std::sync::Arc;
 
-use crate::error::{from_swift, AuthorizationStatus, SpeechError};
+use serde::Serialize;
+
+use crate::error::{AuthorizationStatus, SpeechError};
 use crate::ffi;
+use crate::language_model::LanguageModelConfiguration;
+use crate::private::{
+    cstring_from_path, error_from_status, json_cstring, parse_json_ptr, take_string,
+};
+use crate::request::{
+    AudioBufferRecognitionRequest, CallbackQueue, QueuePayload, RecognitionRequestOptions,
+    TaskHint, UrlRecognitionRequest,
+};
+use crate::task::{
+    availability_trampoline, make_availability_callback, make_task_callback, task_event_trampoline,
+    AudioBufferRecognitionTask, RecognitionTask, RecognizerAvailabilityObserver,
+};
+use crate::transcription::{
+    DetailedRecognitionMetadata, DetailedRecognitionResult, TranscriptionSegmentDetails,
+};
 
 /// One transcription segment with its position in the audio.
 #[derive(Debug, Clone, PartialEq)]
@@ -30,38 +50,34 @@ pub struct RecognitionResult {
     pub segments: Vec<TranscriptionSegment>,
 }
 
+/// Voice / pacing analytics returned by macOS 11+ Speech.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecognitionMetadata {
+    /// Words per minute (or roughly equivalent unit).
+    pub speaking_rate: f64,
+    /// Mean inter-word pause (seconds).
+    pub average_pause_duration: f64,
+    /// Offset (seconds) of detected speech start within the audio.
+    pub speech_start_timestamp: f64,
+    /// Total seconds of detected speech.
+    pub speech_duration: f64,
+}
+
+/// Result + optional metadata from
+/// [`SpeechRecognizer::recognize_in_path_with_metadata`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecognitionWithMetadata {
+    pub result: RecognitionResult,
+    /// `None` when the recogniser did not populate metadata.
+    pub metadata: Option<RecognitionMetadata>,
+}
+
 /// Speech recognition engine.
-///
-/// # Authorization
-///
-/// `SFSpeechRecognizer` requires user authorization. Check with
-/// [`SpeechRecognizer::authorization_status`] and trigger the prompt with
-/// [`SpeechRecognizer::request_authorization`]. CLI / daemon binaries
-/// without an `Info.plist` will typically get `Denied`.
-///
-/// # Examples
-///
-/// ```rust,no_run
-/// use speech::prelude::*;
-///
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// if !SpeechRecognizer::authorization_status().is_authorized() {
-///     let new_status = SpeechRecognizer::request_authorization();
-///     if !new_status.is_authorized() {
-///         eprintln!("authorization denied: {new_status:?}");
-///         return Ok(());
-///     }
-/// }
-///
-/// let recognizer = SpeechRecognizer::new();
-/// let result = recognizer.recognize_in_path("/tmp/utterance.aiff")?;
-/// println!("{}", result.transcript);
-/// # Ok(())
-/// # }
-/// ```
 #[derive(Debug, Clone)]
 pub struct SpeechRecognizer {
     locale_id: Option<CString>,
+    default_task_hint: TaskHint,
+    callback_queue: CallbackQueue,
 }
 
 impl Default for SpeechRecognizer {
@@ -70,11 +86,22 @@ impl Default for SpeechRecognizer {
     }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecognizerPayload {
+    default_task_hint: Option<i32>,
+    queue: QueuePayload,
+}
+
 impl SpeechRecognizer {
     /// Construct using the device's default locale.
     #[must_use]
-    pub const fn new() -> Self {
-        Self { locale_id: None }
+    pub fn new() -> Self {
+        Self {
+            locale_id: None,
+            default_task_hint: TaskHint::Unspecified,
+            callback_queue: CallbackQueue::Main,
+        }
     }
 
     /// Construct using the recognizer for `locale_id` (e.g. `"en-US"`,
@@ -95,6 +122,8 @@ impl SpeechRecognizer {
     pub fn with_locale_checked(locale_id: &str) -> Option<Self> {
         Some(Self {
             locale_id: Some(CString::new(locale_id).ok()?),
+            default_task_hint: TaskHint::Unspecified,
+            callback_queue: CallbackQueue::Main,
         })
     }
 
@@ -104,25 +133,43 @@ impl SpeechRecognizer {
         AuthorizationStatus::from_raw(unsafe { ffi::sp_authorization_status() })
     }
 
-    /// Synchronously prompt the user for authorization. Blocks until the
-    /// system responds (or 30 seconds elapse). Returns the resulting status.
-    ///
-    /// CLI binaries without a proper `Info.plist` will typically get
-    /// [`AuthorizationStatus::Denied`].
+    /// Synchronously prompt the user for authorization.
     #[must_use]
     pub fn request_authorization() -> AuthorizationStatus {
         AuthorizationStatus::from_raw(unsafe { ffi::sp_request_authorization() })
     }
 
-    /// Whether the on-device recognizer for the configured locale is
-    /// available right now.
+    /// Returns the set of locales supported by `SFSpeechRecognizer`.
+    pub fn supported_locales() -> Result<Vec<String>, SpeechError> {
+        let ptr = unsafe { ffi::sp_supported_locales_json() };
+        unsafe { parse_json_ptr::<Vec<String>>(ptr, "supported locales") }
+    }
+
+    /// Whether the recognizer for the configured locale is currently available.
     #[must_use]
     pub fn is_available(&self) -> bool {
-        let p = self
-            .locale_id
-            .as_ref()
-            .map_or(ptr::null(), |c| c.as_ptr());
-        unsafe { ffi::sp_recognizer_is_available(p) }
+        unsafe { ffi::sp_recognizer_is_available(self.locale_ptr()) }
+    }
+
+    /// The actual locale identifier Apple's recognizer resolved to.
+    pub fn locale_identifier(&self) -> Result<String, SpeechError> {
+        let recognizer_json = self.recognizer_json()?;
+        let mut err_msg: *mut c_char = ptr::null_mut();
+        let ptr = unsafe {
+            ffi::sp_recognizer_locale_identifier(
+                self.locale_ptr(),
+                recognizer_json.as_ptr(),
+                &mut err_msg,
+            )
+        };
+        if ptr.is_null() {
+            return Err(unsafe { error_from_status(ffi::status::RECOGNIZER_UNAVAILABLE, err_msg) });
+        }
+        unsafe { take_string(ptr) }.ok_or_else(|| {
+            SpeechError::RecognizerUnavailable(
+                "recognizer did not return a locale identifier".into(),
+            )
+        })
     }
 
     /// Identifier of the device's default speech-recognizer locale (or
@@ -140,285 +187,291 @@ impl SpeechRecognizer {
         Some(s)
     }
 
-    /// Recognize speech in the audio file at `path`. Supports any audio
-    /// format `AVFoundation` can read (AIFF, WAV, M4A, MP3, ...).
-    ///
-    /// Forces on-device recognition (no Apple-server round-trip).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SpeechError::NotAuthorized`] when the user hasn't granted
-    /// authorization, [`SpeechError::AudioLoadFailed`] / [`SpeechError::RecognizerUnavailable`]
-    /// for setup failures, or [`SpeechError::RecognitionFailed`] /
-    /// [`SpeechError::TimedOut`] for runtime failures.
+    /// Whether the recognizer can operate without network access.
+    pub fn supports_on_device_recognition(&self) -> Result<bool, SpeechError> {
+        let recognizer_json = self.recognizer_json()?;
+        Ok(unsafe {
+            ffi::sp_recognizer_supports_on_device_recognition(
+                self.locale_ptr(),
+                recognizer_json.as_ptr(),
+            )
+        })
+    }
+
+    /// The recognizer-wide default task hint applied to requests that do not override it.
+    #[must_use]
+    pub const fn default_task_hint(&self) -> TaskHint {
+        self.default_task_hint
+    }
+
+    #[must_use]
+    pub fn with_default_task_hint(mut self, default_task_hint: TaskHint) -> Self {
+        self.default_task_hint = default_task_hint;
+        self
+    }
+
+    pub fn set_default_task_hint(&mut self, default_task_hint: TaskHint) {
+        self.default_task_hint = default_task_hint;
+    }
+
+    /// The queue used for asynchronous callbacks and delegate events.
+    #[must_use]
+    pub fn callback_queue(&self) -> &CallbackQueue {
+        &self.callback_queue
+    }
+
+    #[must_use]
+    pub fn with_callback_queue(mut self, callback_queue: CallbackQueue) -> Self {
+        self.callback_queue = callback_queue;
+        self
+    }
+
+    pub fn set_callback_queue(&mut self, callback_queue: CallbackQueue) {
+        self.callback_queue = callback_queue;
+    }
+
+    /// Observe recognizer availability changes via `SFSpeechRecognizerDelegate`.
+    pub fn observe_availability_changes<F>(
+        &self,
+        callback: F,
+    ) -> Result<RecognizerAvailabilityObserver, SpeechError>
+    where
+        F: Fn(bool) + Send + Sync + 'static,
+    {
+        let recognizer_json = self.recognizer_json()?;
+        let callback = make_availability_callback(callback);
+        let callback_raw = Arc::as_ptr(&callback).cast::<c_void>().cast_mut();
+        let mut err_msg: *mut c_char = ptr::null_mut();
+        let token = unsafe {
+            ffi::sp_recognizer_observe_availability(
+                self.locale_ptr(),
+                recognizer_json.as_ptr(),
+                availability_trampoline,
+                callback_raw,
+                &mut err_msg,
+            )
+        };
+        if token.is_null() {
+            Err(unsafe { error_from_status(ffi::status::RECOGNIZER_UNAVAILABLE, err_msg) })
+        } else {
+            Ok(RecognizerAvailabilityObserver::from_token(token, callback))
+        }
+    }
+
+    /// Run synchronous file recognition with the full Speech.framework result surface.
+    pub fn recognize_request(
+        &self,
+        request: &UrlRecognitionRequest,
+    ) -> Result<DetailedRecognitionResult, SpeechError> {
+        let path_c = cstring_from_path(request.path(), "audio path")?;
+        let recognizer_json = self.recognizer_json()?;
+        let request_json = request.options().to_json_cstring()?;
+        let mut result_json: *mut c_char = ptr::null_mut();
+        let mut err_msg: *mut c_char = ptr::null_mut();
+
+        let status = unsafe {
+            ffi::sp_recognize_url_detailed_json(
+                path_c.as_ptr(),
+                self.locale_ptr(),
+                recognizer_json.as_ptr(),
+                request_json.as_ptr(),
+                &mut result_json,
+                &mut err_msg,
+            )
+        };
+        if status != ffi::status::OK {
+            return Err(unsafe { error_from_status(status, err_msg) });
+        }
+        unsafe {
+            parse_json_ptr::<DetailedRecognitionResult>(result_json, "detailed recognition result")
+        }
+    }
+
+    /// Recognize speech in the audio file at `path`.
     pub fn recognize_in_path(
         &self,
         path: impl AsRef<Path>,
     ) -> Result<RecognitionResult, SpeechError> {
-        let path_str = path
-            .as_ref()
-            .to_str()
-            .ok_or_else(|| SpeechError::InvalidArgument("non-UTF-8 path".into()))?;
-        let path_c = CString::new(path_str)
-            .map_err(|e| SpeechError::InvalidArgument(format!("path NUL byte: {e}")))?;
-
-        let locale_p = self
-            .locale_id
-            .as_ref()
-            .map_or(ptr::null(), |c| c.as_ptr());
-
-        let mut transcript_raw: *mut c_char = ptr::null_mut();
-        let mut segments_raw: *mut c_void = ptr::null_mut();
-        let mut segment_count: usize = 0;
-        let mut err_msg: *mut c_char = ptr::null_mut();
-
-        let status = unsafe {
-            ffi::sp_recognize_url(
-                path_c.as_ptr(),
-                locale_p,
-                &mut transcript_raw,
-                &mut segments_raw,
-                &mut segment_count,
-                &mut err_msg,
-            )
-        };
-        if status != ffi::status::OK {
-            return Err(unsafe { from_swift(status, err_msg) });
-        }
-
-        let transcript = if transcript_raw.is_null() {
-            String::new()
-        } else {
-            let s = unsafe { core::ffi::CStr::from_ptr(transcript_raw) }
-                .to_string_lossy()
-                .into_owned();
-            unsafe { ffi::sp_string_free(transcript_raw) };
-            s
-        };
-
-        let segments = if segments_raw.is_null() || segment_count == 0 {
-            Vec::new()
-        } else {
-            let typed = segments_raw.cast::<ffi::TranscriptionSegmentRaw>();
-            let mut v = Vec::with_capacity(segment_count);
-            for i in 0..segment_count {
-                let raw = unsafe { &*typed.add(i) };
-                let text = if raw.text.is_null() {
-                    String::new()
-                } else {
-                    unsafe { core::ffi::CStr::from_ptr(raw.text) }
-                        .to_string_lossy()
-                        .into_owned()
-                };
-                v.push(TranscriptionSegment {
-                    text,
-                    confidence: raw.confidence,
-                    timestamp: raw.timestamp,
-                    duration: raw.duration,
-                });
-            }
-            unsafe { ffi::sp_transcription_segments_free(segments_raw, segment_count) };
-            v
-        };
-
-        Ok(RecognitionResult {
-            transcript,
-            segments,
-        })
+        let request = UrlRecognitionRequest::new(path);
+        let detailed = self.recognize_request(&request)?;
+        Ok(simple_result_from_detailed(&detailed))
     }
 
     /// Like [`Self::recognize_in_path`] but also returns Apple's
-    /// speech-recognition metadata: speaking rate, average pause duration,
-    /// speech start timestamp, speech duration.
-    ///
-    /// # Errors
-    ///
-    /// See [`Self::recognize_in_path`].
+    /// speech-recognition metadata.
     pub fn recognize_in_path_with_metadata(
         &self,
         path: impl AsRef<Path>,
     ) -> Result<RecognitionWithMetadata, SpeechError> {
-        let path_str = path
-            .as_ref()
-            .to_str()
-            .ok_or_else(|| SpeechError::InvalidArgument("non-UTF-8 path".into()))?;
-        let path_c = CString::new(path_str)
-            .map_err(|e| SpeechError::InvalidArgument(format!("path NUL byte: {e}")))?;
-
-        let locale_p = self.locale_id.as_ref().map_or(ptr::null(), |c| c.as_ptr());
-
-        let mut transcript_raw: *mut c_char = ptr::null_mut();
-        let mut segments_raw: *mut c_void = ptr::null_mut();
-        let mut segment_count: usize = 0;
-        let mut meta = ffi::RecognitionMetadataRaw {
-            has_metadata: false,
-            speaking_rate: 0.0,
-            average_pause_duration: 0.0,
-            speech_start_timestamp: 0.0,
-            speech_duration: 0.0,
-        };
-        let mut err_msg: *mut c_char = ptr::null_mut();
-
-        let status = unsafe {
-            ffi::sp_recognize_url_with_metadata(
-                path_c.as_ptr(),
-                locale_p,
-                &mut transcript_raw,
-                &mut segments_raw,
-                &mut segment_count,
-                &mut meta,
-                &mut err_msg,
-            )
-        };
-        if status != ffi::status::OK {
-            return Err(unsafe { from_swift(status, err_msg) });
-        }
-
-        let transcript = if transcript_raw.is_null() {
-            String::new()
-        } else {
-            let s = unsafe { core::ffi::CStr::from_ptr(transcript_raw) }
-                .to_string_lossy()
-                .into_owned();
-            unsafe { ffi::sp_string_free(transcript_raw) };
-            s
-        };
-        let segments = if segments_raw.is_null() || segment_count == 0 {
-            Vec::new()
-        } else {
-            let typed = segments_raw.cast::<ffi::TranscriptionSegmentRaw>();
-            let mut v = Vec::with_capacity(segment_count);
-            for i in 0..segment_count {
-                let raw = unsafe { &*typed.add(i) };
-                let text = if raw.text.is_null() {
-                    String::new()
-                } else {
-                    unsafe { core::ffi::CStr::from_ptr(raw.text) }
-                        .to_string_lossy()
-                        .into_owned()
-                };
-                v.push(TranscriptionSegment {
-                    text,
-                    confidence: raw.confidence,
-                    timestamp: raw.timestamp,
-                    duration: raw.duration,
-                });
-            }
-            unsafe { ffi::sp_transcription_segments_free(segments_raw, segment_count) };
-            v
-        };
-
-        let metadata = if meta.has_metadata {
-            Some(RecognitionMetadata {
-                speaking_rate: meta.speaking_rate,
-                average_pause_duration: meta.average_pause_duration,
-                speech_start_timestamp: meta.speech_start_timestamp,
-                speech_duration: meta.speech_duration,
-            })
-        } else {
-            None
-        };
-
+        let request = UrlRecognitionRequest::new(path);
+        let detailed = self.recognize_request(&request)?;
         Ok(RecognitionWithMetadata {
-            result: RecognitionResult {
-                transcript,
-                segments,
-            },
-            metadata,
+            result: simple_result_from_detailed(&detailed),
+            metadata: detailed
+                .speech_recognition_metadata
+                .as_ref()
+                .map(legacy_metadata_from_detailed),
         })
     }
 
     /// Recognise audio at `path` against a custom on-device language
-    /// model built with `SFSpeechLanguageModel.prepareCustomLanguageModelForUrl`.
-    ///
-    /// `language_model` is the path to a generated language-model
-    /// file (`.bin`). `vocabulary` is an optional path to a vocab
-    /// file.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SpeechError::RecognizerUnavailable`] /
-    /// [`SpeechError::InvalidArgument`].
+    /// model built with `SFSpeechLanguageModel.prepareCustomLanguageModel`.
     pub fn recognize_in_path_with_custom_model(
         &self,
         audio_path: impl AsRef<Path>,
         language_model: impl AsRef<Path>,
         vocabulary: Option<&Path>,
     ) -> Result<String, SpeechError> {
-        let a = audio_path
-            .as_ref()
-            .to_str()
-            .ok_or_else(|| SpeechError::InvalidArgument("non-UTF-8 audio path".into()))?;
-        let lm = language_model
-            .as_ref()
-            .to_str()
-            .ok_or_else(|| SpeechError::InvalidArgument("non-UTF-8 LM path".into()))?;
-        let a_c = CString::new(a)
-            .map_err(|e| SpeechError::InvalidArgument(format!("audio path NUL: {e}")))?;
-        let lm_c = CString::new(lm)
-            .map_err(|e| SpeechError::InvalidArgument(format!("LM path NUL: {e}")))?;
-        let vocab_c = match vocabulary {
-            Some(v) => {
-                let s = v
-                    .to_str()
-                    .ok_or_else(|| SpeechError::InvalidArgument("non-UTF-8 vocab path".into()))?;
-                Some(
-                    CString::new(s)
-                        .map_err(|e| SpeechError::InvalidArgument(format!("vocab path NUL: {e}")))?,
-                )
-            }
-            None => None,
-        };
-        let locale_p = self.locale_id.as_ref().map_or(ptr::null(), |c| c.as_ptr());
-        let vocab_p = vocab_c.as_ref().map_or(ptr::null(), |c| c.as_ptr());
+        let mut options =
+            RecognitionRequestOptions::new().with_requires_on_device_recognition(true);
+        let mut configuration = LanguageModelConfiguration::new(language_model);
+        if let Some(vocabulary) = vocabulary {
+            configuration = configuration.with_vocabulary(vocabulary);
+        }
+        options.set_customized_language_model(configuration);
+        let request = UrlRecognitionRequest::new(audio_path).with_options(options);
+        let detailed = self.recognize_request(&request)?;
+        Ok(detailed.transcript().to_owned())
+    }
 
-        let mut transcript_raw: *mut c_char = ptr::null_mut();
+    /// Start an asynchronous URL-based recognition task using Speech's delegate pipeline.
+    pub fn start_url_task<F>(
+        &self,
+        request: &UrlRecognitionRequest,
+        callback: F,
+    ) -> Result<RecognitionTask, SpeechError>
+    where
+        F: Fn(crate::task::RecognitionTaskEvent) + Send + Sync + 'static,
+    {
+        let path_c = cstring_from_path(request.path(), "audio path")?;
+        let recognizer_json = self.recognizer_json()?;
+        let request_json = request.options().to_json_cstring()?;
+        let callback = make_task_callback(callback);
+        let callback_raw = Arc::as_ptr(&callback).cast::<c_void>().cast_mut();
         let mut err_msg: *mut c_char = ptr::null_mut();
-        let status = unsafe {
-            ffi::sp_recognize_url_with_custom_model(
-                a_c.as_ptr(),
-                locale_p,
-                lm_c.as_ptr(),
-                vocab_p,
-                &mut transcript_raw,
+        let token = unsafe {
+            ffi::sp_start_url_task(
+                path_c.as_ptr(),
+                self.locale_ptr(),
+                recognizer_json.as_ptr(),
+                request_json.as_ptr(),
+                task_event_trampoline,
+                callback_raw,
                 &mut err_msg,
             )
         };
-        if status != ffi::status::OK {
-            return Err(unsafe { from_swift(status, err_msg) });
-        }
-        let transcript = if transcript_raw.is_null() {
-            String::new()
+        if token.is_null() {
+            Err(unsafe { error_from_status(ffi::status::RECOGNIZER_UNAVAILABLE, err_msg) })
         } else {
-            let s = unsafe { core::ffi::CStr::from_ptr(transcript_raw) }
-                .to_string_lossy()
-                .into_owned();
-            unsafe { ffi::sp_string_free(transcript_raw) };
-            s
+            Ok(RecognitionTask::from_token(token, callback))
+        }
+    }
+
+    /// Start a manually-fed `SFSpeechAudioBufferRecognitionRequest`.
+    pub fn start_audio_buffer_task<F>(
+        &self,
+        request: &AudioBufferRecognitionRequest,
+        callback: F,
+    ) -> Result<AudioBufferRecognitionTask, SpeechError>
+    where
+        F: Fn(crate::task::RecognitionTaskEvent) + Send + Sync + 'static,
+    {
+        let recognizer_json = self.recognizer_json()?;
+        let request_json = request.options().to_json_cstring()?;
+        let callback = make_task_callback(callback);
+        let callback_raw = Arc::as_ptr(&callback).cast::<c_void>().cast_mut();
+        let mut err_msg: *mut c_char = ptr::null_mut();
+        let token = unsafe {
+            ffi::sp_start_audio_buffer_task(
+                self.locale_ptr(),
+                recognizer_json.as_ptr(),
+                request_json.as_ptr(),
+                task_event_trampoline,
+                callback_raw,
+                &mut err_msg,
+            )
         };
-        Ok(transcript)
+        if token.is_null() {
+            Err(unsafe { error_from_status(ffi::status::RECOGNIZER_UNAVAILABLE, err_msg) })
+        } else {
+            Ok(AudioBufferRecognitionTask::from_token(token, callback))
+        }
+    }
+
+    /// Start microphone capture backed by `SFSpeechAudioBufferRecognitionRequest`.
+    pub fn start_microphone_task<F>(
+        &self,
+        request: &AudioBufferRecognitionRequest,
+        callback: F,
+    ) -> Result<AudioBufferRecognitionTask, SpeechError>
+    where
+        F: Fn(crate::task::RecognitionTaskEvent) + Send + Sync + 'static,
+    {
+        let recognizer_json = self.recognizer_json()?;
+        let request_json = request.options().to_json_cstring()?;
+        let callback = make_task_callback(callback);
+        let callback_raw = Arc::as_ptr(&callback).cast::<c_void>().cast_mut();
+        let mut err_msg: *mut c_char = ptr::null_mut();
+        let token = unsafe {
+            ffi::sp_start_microphone_task(
+                self.locale_ptr(),
+                recognizer_json.as_ptr(),
+                request_json.as_ptr(),
+                task_event_trampoline,
+                callback_raw,
+                &mut err_msg,
+            )
+        };
+        if token.is_null() {
+            Err(unsafe { error_from_status(ffi::status::RECOGNIZER_UNAVAILABLE, err_msg) })
+        } else {
+            Ok(AudioBufferRecognitionTask::from_token(token, callback))
+        }
+    }
+
+    fn locale_ptr(&self) -> *const c_char {
+        self.locale_id
+            .as_ref()
+            .map_or(ptr::null(), |value| value.as_ptr())
+    }
+
+    fn recognizer_json(&self) -> Result<CString, SpeechError> {
+        json_cstring(
+            &RecognizerPayload {
+                default_task_hint: Some(self.default_task_hint.as_raw()),
+                queue: QueuePayload::from(&self.callback_queue),
+            },
+            "recognizer configuration",
+        )
     }
 }
 
-/// Voice / pacing analytics returned by macOS 11+ Speech.
-#[derive(Debug, Clone, PartialEq)]
-pub struct RecognitionMetadata {
-    /// Words per minute (or roughly equivalent unit).
-    pub speaking_rate: f64,
-    /// Mean inter-word pause (seconds).
-    pub average_pause_duration: f64,
-    /// Offset (seconds) of detected speech start within the audio.
-    pub speech_start_timestamp: f64,
-    /// Total seconds of detected speech.
-    pub speech_duration: f64,
+fn simple_result_from_detailed(detailed: &DetailedRecognitionResult) -> RecognitionResult {
+    RecognitionResult {
+        transcript: detailed.best_transcription.formatted_string.clone(),
+        segments: detailed
+            .best_transcription
+            .segments
+            .iter()
+            .map(simple_segment_from_detailed)
+            .collect(),
+    }
 }
 
-/// Result + optional metadata from
-/// [`SpeechRecognizer::recognize_in_path_with_metadata`].
-#[derive(Debug, Clone, PartialEq)]
-pub struct RecognitionWithMetadata {
-    pub result: RecognitionResult,
-    /// `None` on older macOS where `SFSpeechRecognitionMetadata` isn't
-    /// available, or when the recogniser didn't populate it.
-    pub metadata: Option<RecognitionMetadata>,
+fn simple_segment_from_detailed(segment: &TranscriptionSegmentDetails) -> TranscriptionSegment {
+    TranscriptionSegment {
+        text: segment.substring.clone(),
+        confidence: segment.confidence,
+        timestamp: segment.timestamp,
+        duration: segment.duration,
+    }
+}
+
+fn legacy_metadata_from_detailed(metadata: &DetailedRecognitionMetadata) -> RecognitionMetadata {
+    RecognitionMetadata {
+        speaking_rate: metadata.speaking_rate,
+        average_pause_duration: metadata.average_pause_duration,
+        speech_start_timestamp: metadata.speech_start_timestamp,
+        speech_duration: metadata.speech_duration,
+    }
 }

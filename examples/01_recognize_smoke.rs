@@ -4,12 +4,12 @@
 //!
 //! Run with: `cargo run --example 01_recognize_smoke`
 
+use speech::prelude::*;
 use std::path::PathBuf;
 use std::process::Command;
-use speech::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let aiff_path: PathBuf = "/tmp/speech_smoke.aiff".into();
+    let aiff_path: PathBuf = std::env::current_dir()?.join("target/legacy_speech_smoke.aiff");
     let target_text = "the quick brown fox jumps over the lazy dog";
 
     println!("== Step 1: render speech audio via /usr/bin/say ==");
@@ -21,7 +21,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(format!("`say` failed with status {status}").into());
     }
     let metadata = std::fs::metadata(&aiff_path)?;
-    println!("synthesized {} ({} bytes)", aiff_path.display(), metadata.len());
+    println!(
+        "synthesized {} ({} bytes)",
+        aiff_path.display(),
+        metadata.len()
+    );
 
     println!("\n== Step 2: check authorization ==");
     let status = SpeechRecognizer::authorization_status();
