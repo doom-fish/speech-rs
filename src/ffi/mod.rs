@@ -50,6 +50,8 @@ extern "C" {
         out_error_message: *mut *mut c_char,
     ) -> *mut c_void;
     pub fn sp_live_recognition_stop(token: *mut c_void);
+    pub fn sp_live_recognition_end_audio(token: *mut c_void);
+    pub fn sp_live_recognition_cancel(token: *mut c_void);
 }
 
 #[repr(C)]

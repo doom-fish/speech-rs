@@ -120,4 +120,24 @@ impl LiveRecognition {
             _callback: cb_box,
         })
     }
+
+    /// End the audio stream cleanly. Apple finalises any in-flight
+    /// audio and fires the callback one last time with `is_final=true`.
+    /// The session is still alive after this; drop the
+    /// [`LiveRecognition`] when you're done observing results.
+    pub fn end_audio(&self) {
+        if !self.token.is_null() {
+            unsafe { ffi::sp_live_recognition_end_audio(self.token) };
+        }
+    }
+
+    /// Cancel the recognition task immediately and discard any
+    /// in-flight audio. The session is still alive (the callback may
+    /// fire once more with a cancellation error); drop the
+    /// [`LiveRecognition`] when done.
+    pub fn cancel(&self) {
+        if !self.token.is_null() {
+            unsafe { ffi::sp_live_recognition_cancel(self.token) };
+        }
+    }
 }

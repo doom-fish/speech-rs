@@ -446,3 +446,27 @@ public func sp_live_recognition_stop(_ token: UnsafeMutableRawPointer?) {
     session.task?.cancel()
     Unmanaged<LiveSession>.fromOpaque(token).release()
 }
+
+/// End the audio stream cleanly (`SFSpeechAudioBufferRecognitionRequest.endAudio()`)
+/// without cancelling the underlying task — pending audio gets
+/// finalised and the callback fires one last time with `is_final=true`.
+/// The session token remains valid; you still need to call
+/// `sp_live_recognition_stop` afterwards to release resources.
+@_cdecl("sp_live_recognition_end_audio")
+public func sp_live_recognition_end_audio(_ token: UnsafeMutableRawPointer?) {
+    guard let token = token, let session = liveSessions[token] else { return }
+    session.audioEngine.stop()
+    session.audioEngine.inputNode.removeTap(onBus: 0)
+    session.request.endAudio()
+}
+
+/// Cancel the recognition task immediately and discard any in-flight
+/// audio. The session token remains valid; you still need to call
+/// `sp_live_recognition_stop` afterwards to release resources.
+@_cdecl("sp_live_recognition_cancel")
+public func sp_live_recognition_cancel(_ token: UnsafeMutableRawPointer?) {
+    guard let token = token, let session = liveSessions[token] else { return }
+    session.audioEngine.stop()
+    session.audioEngine.inputNode.removeTap(onBus: 0)
+    session.task?.cancel()
+}
