@@ -32,7 +32,21 @@ extern "C" {
     ) -> i32;
 
     pub fn sp_transcription_segments_free(array: *mut c_void, count: usize);
+
+    pub fn sp_live_recognition_start(
+        locale_id: *const c_char,
+        callback: LiveCallback,
+        user_info: *mut c_void,
+        out_error_message: *mut *mut c_char,
+    ) -> *mut c_void;
+    pub fn sp_live_recognition_stop(token: *mut c_void);
 }
+
+pub type LiveCallback = unsafe extern "C" fn(
+    user_info: *mut c_void,
+    transcript: *const c_char,
+    is_final: bool,
+);
 
 pub mod status {
     pub const OK: i32 = 0;

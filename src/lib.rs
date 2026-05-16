@@ -20,7 +20,10 @@ pub mod ffi;
 #[cfg_attr(docsrs, doc(cfg(feature = "recognize_url")))]
 pub mod recognizer;
 
+pub mod live;
+
 pub use error::{AuthorizationStatus, SpeechError};
+pub use live::{LiveRecognition, LiveUpdate};
 
 #[cfg(feature = "recognize_url")]
 pub use recognizer::{RecognitionResult, SpeechRecognizer, TranscriptionSegment};
@@ -28,6 +31,7 @@ pub use recognizer::{RecognitionResult, SpeechRecognizer, TranscriptionSegment};
 /// Common imports.
 pub mod prelude {
     pub use crate::error::{AuthorizationStatus, SpeechError};
+    pub use crate::live::{LiveRecognition, LiveUpdate};
     #[cfg(feature = "recognize_url")]
     pub use crate::recognizer::{RecognitionResult, SpeechRecognizer, TranscriptionSegment};
 }

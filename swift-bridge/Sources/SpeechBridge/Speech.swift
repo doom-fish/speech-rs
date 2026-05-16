@@ -225,3 +225,107 @@ public func sp_transcription_segments_free(_ array: UnsafeMutableRawPointer?, _ 
     }
     typed.deallocate()
 }
+
+// MARK: - v0.2: Live audio-buffer streaming
+
+/// Result handler for the live streaming API. Called with each partial
+/// transcript as Apple emits it, plus a final call with isFinal=true.
+///
+/// All pointers are temporary — copy the text if you need to keep it.
+public typealias SPStreamCallback = @convention(c) (
+    UnsafeMutableRawPointer?,           // user_info
+    UnsafePointer<CChar>?,              // transcript (NUL-terminated, transient)
+    Bool                                 // is_final
+) -> Void
+
+private final class LiveSession {
+    let recognizer: SFSpeechRecognizer
+    let request: SFSpeechAudioBufferRecognitionRequest
+    let audioEngine: AVAudioEngine
+    var task: SFSpeechRecognitionTask?
+
+    init?(localeId: String) {
+        let locale = Locale(identifier: localeId)
+        guard let recognizer = SFSpeechRecognizer(locale: locale),
+              recognizer.isAvailable else {
+            return nil
+        }
+        self.recognizer = recognizer
+        self.request = SFSpeechAudioBufferRecognitionRequest()
+        self.request.shouldReportPartialResults = true
+        self.request.requiresOnDeviceRecognition = true
+        self.audioEngine = AVAudioEngine()
+    }
+}
+
+private var liveSessions: [UnsafeMutableRawPointer: LiveSession] = [:]
+
+/// Start a live audio-buffer recognition session. Returns an opaque
+/// token (never NULL on success) that you pass back to
+/// `sp_live_recognition_stop`.
+@_cdecl("sp_live_recognition_start")
+public func sp_live_recognition_start(
+    _ localeId: UnsafePointer<CChar>?,
+    _ callback: @escaping SPStreamCallback,
+    _ userInfo: UnsafeMutableRawPointer?,
+    _ outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
+) -> UnsafeMutableRawPointer? {
+    let locale: String
+    if let p = localeId {
+        locale = String(cString: p)
+    } else {
+        locale = Locale.current.identifier
+    }
+    guard let session = LiveSession(localeId: locale) else {
+        outErrorMessage?.pointee = ffiString("recognizer unavailable for locale \(locale)")
+        return nil
+    }
+
+    // Install a tap on the input node to feed audio buffers into the request.
+    let inputNode = session.audioEngine.inputNode
+    let format = inputNode.outputFormat(forBus: 0)
+    inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+        session.request.append(buffer)
+    }
+
+    session.audioEngine.prepare()
+    do {
+        try session.audioEngine.start()
+    } catch {
+        outErrorMessage?.pointee = ffiString("audio engine start failed: \(error.localizedDescription)")
+        return nil
+    }
+
+    session.task = session.recognizer.recognitionTask(with: session.request) { result, error in
+        if let error = error {
+            let msg = "error: \(error.localizedDescription)"
+            msg.withCString { ptr in
+                callback(userInfo, ptr, true)
+            }
+            return
+        }
+        guard let result = result else { return }
+        let text = result.bestTranscription.formattedString
+        text.withCString { ptr in
+            callback(userInfo, ptr, result.isFinal)
+        }
+    }
+
+    let token = Unmanaged.passRetained(session).toOpaque()
+    liveSessions[token] = session
+    return token
+}
+
+/// Stop a live recognition session started by `sp_live_recognition_start`.
+/// Safe to call multiple times.
+@_cdecl("sp_live_recognition_stop")
+public func sp_live_recognition_stop(_ token: UnsafeMutableRawPointer?) {
+    guard let token = token, let session = liveSessions.removeValue(forKey: token) else {
+        return
+    }
+    session.audioEngine.stop()
+    session.audioEngine.inputNode.removeTap(onBus: 0)
+    session.request.endAudio()
+    session.task?.cancel()
+    Unmanaged<LiveSession>.fromOpaque(token).release()
+}
