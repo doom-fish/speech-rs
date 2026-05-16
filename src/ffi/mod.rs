@@ -198,6 +198,94 @@ extern "C" {
         out_json: *mut *mut c_char,
         out_error_message: *mut *mut c_char,
     ) -> i32;
+
+    pub fn sp_speech_transcriber_is_available() -> bool;
+    pub fn sp_speech_transcriber_supported_locales_json(
+        out_json: *mut *mut c_char,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_speech_transcriber_installed_locales_json(
+        out_json: *mut *mut c_char,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_speech_transcriber_supported_locale_identifier(
+        locale_id: *const c_char,
+        out_locale_id: *mut *mut c_char,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_speech_transcriber_selected_locales_json(
+        configuration_json: *const c_char,
+        out_json: *mut *mut c_char,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_speech_transcriber_available_audio_formats_json(
+        configuration_json: *const c_char,
+        out_json: *mut *mut c_char,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_speech_detector_available_audio_formats_json(
+        configuration_json: *const c_char,
+        out_json: *mut *mut c_char,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_speech_analyzer_best_audio_format_json(
+        modules_json: *const c_char,
+        out_json: *mut *mut c_char,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_speech_analyzer_analyze_url_json(
+        audio_path: *const c_char,
+        analyzer_json: *const c_char,
+        out_json: *mut *mut c_char,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_speech_models_end_retention(out_error_message: *mut *mut c_char) -> i32;
+
+    pub fn sp_asset_inventory_maximum_reserved_locales(
+        out_value: *mut usize,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_asset_inventory_reserved_locales_json(
+        out_json: *mut *mut c_char,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_asset_inventory_reserve_locale(
+        locale_id: *const c_char,
+        out_reserved: *mut bool,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_asset_inventory_release_locale(
+        locale_id: *const c_char,
+        out_released: *mut bool,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_asset_inventory_status_for_modules(
+        modules_json: *const c_char,
+        out_status: *mut i32,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_asset_inventory_installation_request_for_modules(
+        modules_json: *const c_char,
+        out_has_request: *mut bool,
+        out_error_message: *mut *mut c_char,
+    ) -> *mut c_void;
+    pub fn sp_asset_installation_request_progress_json(token: *mut c_void) -> *mut c_char;
+    pub fn sp_asset_installation_request_download_and_install(
+        token: *mut c_void,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_asset_installation_request_release(token: *mut c_void);
+
+    pub fn sp_custom_language_model_supported_phonemes_json(
+        locale_id: *const c_char,
+        out_json: *mut *mut c_char,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
+    pub fn sp_custom_language_model_export(
+        data_json: *const c_char,
+        output_path: *const c_char,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
 }
 
 #[repr(C)]

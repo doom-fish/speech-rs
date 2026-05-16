@@ -42,26 +42,55 @@ pub const SPEECH_ERROR_DOMAIN: &str = "SFSpeechErrorDomain";
 pub enum SpeechFrameworkErrorCode {
     InternalServiceError,
     AudioReadFailed,
+    AudioDisordered,
+    UnexpectedAudioFormat,
+    NoModel,
+    IncompatibleAudioFormats,
     UndefinedTemplateClassName,
     MalformedSupplementalModel,
+    ModuleOutputFailed,
+    AssetLocaleNotAllocated,
+    TooManyAssetLocalesAllocated,
     Timeout,
     MissingParameter,
+    CannotAllocateUnsupportedLocale,
+    InsufficientResources,
     Unknown(i64),
 }
 
 impl SpeechFrameworkErrorCode {
     #[must_use]
     pub fn from_domain_and_code(domain: &str, code: i64) -> Self {
+        Self::from_domain_code_and_message(domain, code, "")
+    }
+
+    #[must_use]
+    pub fn from_domain_code_and_message(domain: &str, code: i64, message: &str) -> Self {
         if domain != SPEECH_ERROR_DOMAIN {
             return Self::Unknown(code);
         }
         match code {
             1 => Self::InternalServiceError,
-            2 => Self::AudioReadFailed,
+            2 => {
+                let lower = message.to_ascii_lowercase();
+                if lower.contains("disordered") || lower.contains("out of order") {
+                    Self::AudioDisordered
+                } else {
+                    Self::AudioReadFailed
+                }
+            }
+            3 => Self::UnexpectedAudioFormat,
+            4 => Self::NoModel,
+            5 => Self::IncompatibleAudioFormats,
             7 => Self::UndefinedTemplateClassName,
             8 => Self::MalformedSupplementalModel,
+            9 => Self::ModuleOutputFailed,
+            10 => Self::AssetLocaleNotAllocated,
+            11 => Self::TooManyAssetLocalesAllocated,
             12 => Self::Timeout,
             13 => Self::MissingParameter,
+            15 => Self::CannotAllocateUnsupportedLocale,
+            16 => Self::InsufficientResources,
             other => Self::Unknown(other),
         }
     }

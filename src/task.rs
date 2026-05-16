@@ -149,7 +149,11 @@ impl TaskCore {
         }
         let payload = unsafe { parse_json_ptr::<TaskErrorPayload>(ptr, "task error") }.ok()?;
         Some(TaskErrorInfo {
-            kind: SpeechFrameworkErrorCode::from_domain_and_code(&payload.domain, payload.code),
+            kind: SpeechFrameworkErrorCode::from_domain_code_and_message(
+                &payload.domain,
+                payload.code,
+                &payload.localized_description,
+            ),
             domain: payload.domain,
             code: payload.code,
             localized_description: payload.localized_description,

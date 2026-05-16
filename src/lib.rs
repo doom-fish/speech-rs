@@ -8,12 +8,17 @@
 //! [Speech](https://developer.apple.com/documentation/speech) framework.
 //!
 //! This crate audits the classic `SFSpeech*` recognition surface on macOS and
-//! adds the macOS 26 `DictationTranscriber` bridge alongside URL and audio-buffer
-//! requests, delegate-driven task events, detailed transcription metadata, voice
-//! analytics, and custom language model preparation.
+//! adds the macOS 26 analyzer family (`SpeechAnalyzer`, `SpeechTranscriber`,
+//! `SpeechDetector`, and `AssetInventory`) alongside `DictationTranscriber`, URL
+//! and audio-buffer requests, delegate-driven task events, detailed
+//! transcription metadata, voice analytics, and custom language model
+//! preparation and authoring.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub mod analyzer;
+pub mod asset_inventory;
+pub mod custom_language_model;
 pub mod dictation;
 pub mod error;
 pub mod ffi;
@@ -26,6 +31,28 @@ pub mod transcription;
 
 pub mod live;
 
+pub use analyzer::{
+    AnalysisContext, AnalyzerInput, AudioTimeRange, ContextualStringsTag,
+    LocaleDependentSpeechModule, SpeechAnalyzer, SpeechAnalyzerModelRetention,
+    SpeechAnalyzerModuleOutput, SpeechAnalyzerModuleResults, SpeechAnalyzerOptions,
+    SpeechAnalyzerPriority, SpeechAttributedText, SpeechAttributeSpan, SpeechAttributes,
+    SpeechConfidenceAttribute, SpeechDetectionOptions, SpeechDetectionResult, SpeechDetector,
+    SpeechDetectorSensitivityLevel, SpeechModels, SpeechModule, SpeechModuleDescriptor,
+    SpeechModuleResult, SpeechTimeRangeAttribute, SpeechTranscriber,
+    SpeechTranscriberOptions, SpeechTranscriberPreset, SpeechTranscriberReportingOption,
+    SpeechTranscriberResultAttributeOption, SpeechTranscriptionOption,
+    SpeechTranscriptionResult, UserDataTag,
+};
+pub use asset_inventory::{
+    AssetInstallationProgress, AssetInstallationRequest, AssetInventory, AssetInventoryStatus,
+};
+pub use custom_language_model::{
+    CompoundTemplate, CustomPronunciation, DataInsertable, DataInsertableBuilder, PhraseCount,
+    PhraseCountGenerator, PhraseCountGeneratorIterator, PhraseCountsFromTemplates,
+    SFCustomLanguageModelData, TemplateInsertable, TemplateInsertableBuilder,
+    TemplatePhraseCountGenerator, TemplatePhraseCountGeneratorIterator,
+    TemplatePhraseCountGeneratorTemplate,
+};
 pub use dictation::{
     DictationAudioTimeRange, DictationContentHint, DictationPreset, DictationReportingOption,
     DictationResultAttributeOption, DictationTranscriber, DictationTranscriberOptions,
@@ -56,6 +83,29 @@ pub use transcription::{
 
 /// Common imports.
 pub mod prelude {
+    pub use crate::analyzer::{
+        AnalysisContext, AnalyzerInput, AudioTimeRange, ContextualStringsTag,
+        LocaleDependentSpeechModule, SpeechAnalyzer, SpeechAnalyzerModelRetention,
+        SpeechAnalyzerModuleOutput, SpeechAnalyzerModuleResults, SpeechAnalyzerOptions,
+        SpeechAnalyzerPriority, SpeechAttributedText, SpeechAttributeSpan, SpeechAttributes,
+        SpeechConfidenceAttribute, SpeechDetectionOptions, SpeechDetectionResult,
+        SpeechDetector, SpeechDetectorSensitivityLevel, SpeechModels, SpeechModule,
+        SpeechModuleDescriptor, SpeechModuleResult, SpeechTimeRangeAttribute,
+        SpeechTranscriber, SpeechTranscriberOptions, SpeechTranscriberPreset,
+        SpeechTranscriberReportingOption, SpeechTranscriberResultAttributeOption,
+        SpeechTranscriptionOption, SpeechTranscriptionResult, UserDataTag,
+    };
+    pub use crate::asset_inventory::{
+        AssetInstallationProgress, AssetInstallationRequest, AssetInventory,
+        AssetInventoryStatus,
+    };
+    pub use crate::custom_language_model::{
+        CompoundTemplate, CustomPronunciation, DataInsertable, DataInsertableBuilder,
+        PhraseCount, PhraseCountGenerator, PhraseCountGeneratorIterator,
+        PhraseCountsFromTemplates, SFCustomLanguageModelData, TemplateInsertable,
+        TemplateInsertableBuilder, TemplatePhraseCountGenerator,
+        TemplatePhraseCountGeneratorIterator, TemplatePhraseCountGeneratorTemplate,
+    };
     pub use crate::dictation::{
         DictationAudioTimeRange, DictationContentHint, DictationPreset, DictationReportingOption,
         DictationResultAttributeOption, DictationTranscriber, DictationTranscriberOptions,

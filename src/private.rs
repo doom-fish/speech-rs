@@ -7,7 +7,7 @@ use std::path::Path;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use crate::error::SpeechError;
+use crate::error::{SpeechError, SpeechFrameworkError, SpeechFrameworkErrorCode};
 use crate::ffi;
 
 pub fn cstring_from_str(value: &str, context: &str) -> Result<CString, SpeechError> {
@@ -54,4 +54,50 @@ pub unsafe fn parse_json_ptr<T: DeserializeOwned>(
 
 pub unsafe fn error_from_status(status: i32, err_msg: *mut c_char) -> SpeechError {
     crate::error::from_swift(status, err_msg)
+}
+
+pub unsafe fn error_from_status_or_json(status: i32, err_msg: *mut c_char) -> SpeechError {
+    let Some(message) = take_string(err_msg) else {
+        return crate::error::from_swift(status, std::ptr::null_mut());
+    };
+
+    if let Ok(payload) = serde_json::from_str::<FrameworkErrorPayload>(&message) {
+        let kind = SpeechFrameworkErrorCode::from_domain_code_and_message(
+            &payload.domain,
+            payload.code,
+            &payload.localized_description,
+        );
+        return SpeechError::Framework(SpeechFrameworkError {
+            domain: payload.domain,
+            code: payload.code,
+            message: payload.localized_description,
+            kind,
+        });
+    }
+
+    with_fallback_message(crate::error::from_swift(status, std::ptr::null_mut()), message)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FrameworkErrorPayload {
+    domain: String,
+    code: i64,
+    localized_description: String,
+}
+
+fn with_fallback_message(error: SpeechError, message: String) -> SpeechError {
+    match error {
+        SpeechError::NotAuthorized(_) => SpeechError::NotAuthorized(message),
+        SpeechError::RecognizerUnavailable(_) => SpeechError::RecognizerUnavailable(message),
+        SpeechError::AudioLoadFailed(_) => SpeechError::AudioLoadFailed(message),
+        SpeechError::RecognitionFailed(_) => SpeechError::RecognitionFailed(message),
+        SpeechError::TimedOut(_) => SpeechError::TimedOut(message),
+        SpeechError::InvalidArgument(_) => SpeechError::InvalidArgument(message),
+        SpeechError::Unknown { code, .. } => SpeechError::Unknown { code, message },
+        SpeechError::Framework(framework) => SpeechError::Framework(SpeechFrameworkError {
+            message,
+            ..framework
+        }),
+    }
 }

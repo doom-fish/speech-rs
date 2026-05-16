@@ -176,8 +176,11 @@ impl SpeechLanguageModel {
         let maybe_json = unsafe { take_string(err_msg) };
         if let Some(json) = maybe_json {
             if let Ok(error) = serde_json::from_str::<FrameworkErrorPayload>(&json) {
-                let kind =
-                    SpeechFrameworkErrorCode::from_domain_and_code(&error.domain, error.code);
+                let kind = SpeechFrameworkErrorCode::from_domain_code_and_message(
+                    &error.domain,
+                    error.code,
+                    &error.localized_description,
+                );
                 return Err(SpeechError::Framework(SpeechFrameworkError {
                     domain: error.domain,
                     code: error.code,

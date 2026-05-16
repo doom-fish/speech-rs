@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.7.1] - 2026-05-16
+
+### Added
+
+- Added macOS 26 analyzer-family bindings:
+  - `SpeechAnalyzer`
+  - `SpeechAnalyzerOptions`
+  - `SpeechAnalyzerModelRetention`
+  - `SpeechTranscriber`
+  - `SpeechDetector`
+  - `AnalysisContext`
+  - `AnalyzerInput`
+  - `SpeechModels`
+  - `AssetInventory`
+  - `AssetInstallationRequest`
+  - `SpeechModule` / `SpeechModuleResult`
+  - attributed `SpeechTranscriptionResult` spans via `SpeechAttributedText`
+- Added custom language-model authoring/export bindings:
+  - `SFCustomLanguageModelData`
+  - `PhraseCount`
+  - `CustomPronunciation`
+  - `DataInsertableBuilder`
+  - `PhraseCountGenerator`
+  - `TemplatePhraseCountGenerator`
+  - `CompoundTemplate`
+  - `TemplateInsertableBuilder`
+  - `PhraseCountsFromTemplates`
+- Added `tests/macos26_surface_tests.rs` and `examples/04_macos26_surface_smoke.rs`.
+
+### Changed
+
+- Bumped crate version from `0.7.0` to `0.7.1`.
+- Closed the remaining 44 `COVERAGE_AUDIT.md` gaps, raising audited coverage from `38.0%` to `100.0%`.
+- Extended `SpeechFrameworkErrorCode` with the macOS 26 `SFSpeechError.Code` extension cases.
+
 ## [0.7.0] - 2026-05-16
 
 ### Added

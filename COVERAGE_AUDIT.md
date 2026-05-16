@@ -3,10 +3,10 @@
 This audit treats exported Obj-C types/protocols/enums/constants as one symbol each, then adds the Swift-overlay-only types and standalone extension helpers that materially expand Speech.framework on macOS 26.2. For the legacy Obj-C interfaces, member-level completeness is also validated by `cargo test --test api_coverage -- --nocapture`; deprecated members are broken out under EXEMPT and excluded from the coverage denominator even when `speech-rs` still wraps them.
 
 SDK_PUBLIC_SYMBOLS: 77
-VERIFIED: 27
-GAPS: 44
+VERIFIED: 71
+GAPS: 0
 EXEMPT: 6
-COVERAGE_PCT: 38.0%
+COVERAGE_PCT: 100.0%
 
 ## 🟢 VERIFIED
 | Symbol | Kind | Header | Wrapped by |
@@ -38,54 +38,53 @@ COVERAGE_PCT: 38.0%
 | `DictationTranscriber.ReportingOption` | enum | `Speech.swiftinterface` | `DictationReportingOption` |
 | `DictationTranscriber.ResultAttributeOption` | enum | `Speech.swiftinterface` | `DictationResultAttributeOption` |
 | `DictationTranscriber.Result` | struct | `Speech.swiftinterface` | `DictationTranscriptionResult` |
+| `AssetInventory` | class | `Speech.swiftinterface` | `AssetInventory::{maximum_reserved_locales,reserved_locales,reserve_locale,release_reserved_locale,status_for_modules,asset_installation_request_for_modules}` |
+| `AssetInventory.Status` | enum | `Speech.swiftinterface` | `AssetInventoryStatus` |
+| `LocaleDependentSpeechModule` | protocol | `Speech.swiftinterface` | `LocaleDependentSpeechModule` |
+| `Foundation.AttributeScopes.SpeechAttributes` | struct | `Speech.swiftinterface` | `SpeechAttributes`, `SpeechAttributedText` |
+| `Foundation.AttributeScopes.SpeechAttributes.ConfidenceAttribute` | struct | `Speech.swiftinterface` | `SpeechConfidenceAttribute` |
+| `Foundation.AttributeScopes.SpeechAttributes.TimeRangeAttribute` | struct | `Speech.swiftinterface` | `SpeechTimeRangeAttribute` |
+| `Foundation.AttributedString.rangeOfAudioTimeRangeAttributes(intersecting:)` | extension func | `Speech.swiftinterface` | `SpeechAttributedText::range_of_audio_time_range_attributes_intersecting` |
+| `SpeechAnalyzer` | actor | `Speech.swiftinterface` | `SpeechAnalyzer::{new,with_options,with_context,analyze_in_path,best_available_audio_format}` |
+| `AnalyzerInput` | struct | `Speech.swiftinterface` | `AnalyzerInput::{from_audio_pcm_buffer_raw,from_audio_pcm_buffer_raw_with_start_time}` |
+| `SpeechModels` | enum | `Speech.swiftinterface` | `SpeechModels::end_retention` |
+| `SpeechDetector` | class | `Speech.swiftinterface` | `SpeechDetector::{new,default,available_compatible_audio_formats,detect_in_path}` |
+| `SpeechDetector.SensitivityLevel` | enum | `Speech.swiftinterface` | `SpeechDetectorSensitivityLevel` |
+| `SpeechDetector.DetectionOptions` | struct | `Speech.swiftinterface` | `SpeechDetectionOptions` |
+| `SpeechDetector.Result` | struct | `Speech.swiftinterface` | `SpeechDetectionResult` |
+| `SpeechModule` | protocol | `Speech.swiftinterface` | `SpeechModule`, `SpeechModuleDescriptor` |
+| `SpeechModuleResult` | protocol | `Speech.swiftinterface` | `SpeechModuleResult` |
+| `SpeechModuleResult.isFinal` | extension var | `Speech.swiftinterface` | `SpeechModuleResult::is_final` |
+| `SpeechTranscriber` | class | `Speech.swiftinterface` | `SpeechTranscriber::{new,with_options,is_available,supported_locales,installed_locales,supported_locale_equivalent_to,selected_locales,available_compatible_audio_formats,transcribe_in_path}` |
+| `SpeechTranscriber.Preset` | struct | `Speech.swiftinterface` | `SpeechTranscriberPreset` |
+| `SpeechTranscriber.TranscriptionOption` | enum | `Speech.swiftinterface` | `SpeechTranscriptionOption` |
+| `SpeechTranscriber.ReportingOption` | enum | `Speech.swiftinterface` | `SpeechTranscriberReportingOption` |
+| `SpeechTranscriber.ResultAttributeOption` | enum | `Speech.swiftinterface` | `SpeechTranscriberResultAttributeOption` |
+| `SpeechTranscriber.Result` | struct | `Speech.swiftinterface` | `SpeechTranscriptionResult` |
+| `SpeechAnalyzer.Options` | struct | `Speech.swiftinterface` | `SpeechAnalyzerOptions` |
+| `SpeechAnalyzer.Options.ModelRetention` | enum | `Speech.swiftinterface` | `SpeechAnalyzerModelRetention` |
+| `AnalysisContext` | class | `Speech.swiftinterface` | `AnalysisContext` |
+| `AnalysisContext.ContextualStringsTag` | struct | `Speech.swiftinterface` | `ContextualStringsTag` |
+| `AnalysisContext.UserDataTag` | struct | `Speech.swiftinterface` | `UserDataTag` |
+| `AssetInstallationRequest` | class | `Speech.swiftinterface` | `AssetInstallationRequest` |
+| `DataInsertable` | protocol | `Speech.swiftinterface` | `DataInsertable` |
+| `TemplateInsertable` | protocol | `Speech.swiftinterface` | `TemplateInsertable` |
+| `SFCustomLanguageModelData` | class | `Speech.swiftinterface` | `SFCustomLanguageModelData::{new,insert,with_insertable,supported_phonemes,export_to}` |
+| `SFCustomLanguageModelData.PhraseCount` | struct | `Speech.swiftinterface` | `PhraseCount` |
+| `SFCustomLanguageModelData.CustomPronunciation` | struct | `Speech.swiftinterface` | `CustomPronunciation` |
+| `SFCustomLanguageModelData.DataInsertableBuilder` | struct | `Speech.swiftinterface` | `DataInsertableBuilder` |
+| `SFCustomLanguageModelData.PhraseCountGenerator` | class | `Speech.swiftinterface` | `PhraseCountGenerator` |
+| `SFCustomLanguageModelData.PhraseCountGenerator.Iterator` | class | `Speech.swiftinterface` | `PhraseCountGeneratorIterator` |
+| `SFCustomLanguageModelData.TemplatePhraseCountGenerator` | class | `Speech.swiftinterface` | `TemplatePhraseCountGenerator` |
+| `SFCustomLanguageModelData.TemplatePhraseCountGenerator.Template` | struct | `Speech.swiftinterface` | `TemplatePhraseCountGeneratorTemplate` |
+| `SFCustomLanguageModelData.TemplatePhraseCountGenerator.Iterator` | class | `Speech.swiftinterface` | `TemplatePhraseCountGeneratorIterator` |
+| `SFCustomLanguageModelData.CompoundTemplate` | struct | `Speech.swiftinterface` | `CompoundTemplate` |
+| `SFCustomLanguageModelData.TemplateInsertableBuilder` | struct | `Speech.swiftinterface` | `TemplateInsertableBuilder` |
+| `SFCustomLanguageModelData.PhraseCountsFromTemplates` | struct | `Speech.swiftinterface` | `PhraseCountsFromTemplates` |
+| `SFSpeechError.Code` (macOS 26 extension cases) | Swift extension | `Speech.swiftinterface` | `SpeechFrameworkErrorCode::{AudioDisordered,UnexpectedAudioFormat,NoModel,AssetLocaleNotAllocated,TooManyAssetLocalesAllocated,IncompatibleAudioFormats,ModuleOutputFailed,CannotAllocateUnsupportedLocale,InsufficientResources}` |
 
 ## 🔴 GAPS
-| Symbol | Kind | Header | Notes |
-| --- | --- | --- | --- |
-| `AssetInventory` | class | `Speech.swiftinterface` | No Rust API for reserving, releasing, or querying downloadable Speech assets. |
-| `AssetInventory.Status` | enum | `Speech.swiftinterface` | No equivalent status enum for asset installation state. |
-| `LocaleDependentSpeechModule` | protocol | `Speech.swiftinterface` | No trait/protocol modeling the locale-dependent module family introduced in macOS 26. |
-| `Foundation.AttributeScopes.SpeechAttributes` | struct | `Speech.swiftinterface` | `speech-rs` flattens transcriber output into plain strings instead of exposing attributed Speech attributes. |
-| `Foundation.AttributeScopes.SpeechAttributes.ConfidenceAttribute` | struct | `Speech.swiftinterface` | No attributed-string key for transcription confidence. |
-| `Foundation.AttributeScopes.SpeechAttributes.TimeRangeAttribute` | struct | `Speech.swiftinterface` | No attributed-string key for audio time ranges. |
-| `Foundation.AttributedString.rangeOfAudioTimeRangeAttributes(intersecting:)` | extension func | `Speech.swiftinterface` | No helper for querying Speech time-range attributes in attributed text. |
-| `SpeechAnalyzer` | actor | `Speech.swiftinterface` | No analyzer pipeline for composing macOS 26 Speech modules over async audio input. |
-| `AnalyzerInput` | struct | `Speech.swiftinterface` | No typed analyzer-input wrapper for `AVAudioPCMBuffer` plus timestamps. |
-| `SpeechModels` | enum | `Speech.swiftinterface` | No binding for `endRetention()` model-lifecycle control. |
-| `SpeechDetector` | class | `Speech.swiftinterface` | No voice-activity / speech-detection module. |
-| `SpeechDetector.SensitivityLevel` | enum | `Speech.swiftinterface` | No equivalent sensitivity enum. |
-| `SpeechDetector.DetectionOptions` | struct | `Speech.swiftinterface` | No detector configuration type. |
-| `SpeechDetector.Result` | struct | `Speech.swiftinterface` | No detector result type. |
-| `SpeechModule` | protocol | `Speech.swiftinterface` | No general module abstraction for the analyzer-based API family. |
-| `SpeechModuleResult` | protocol | `Speech.swiftinterface` | No generic module-result protocol. |
-| `SpeechModuleResult.isFinal` | extension var | `Speech.swiftinterface` | No generalized finalization helper for analyzer-module results. |
-| `SpeechTranscriber` | class | `Speech.swiftinterface` | No binding for the newer analyzer-based transcription API. |
-| `SpeechTranscriber.Preset` | struct | `Speech.swiftinterface` | No equivalent preset type. |
-| `SpeechTranscriber.TranscriptionOption` | enum | `Speech.swiftinterface` | No equivalent transcription-option enum. |
-| `SpeechTranscriber.ReportingOption` | enum | `Speech.swiftinterface` | No equivalent reporting-option enum. |
-| `SpeechTranscriber.ResultAttributeOption` | enum | `Speech.swiftinterface` | No equivalent result-attribute enum. |
-| `SpeechTranscriber.Result` | struct | `Speech.swiftinterface` | No analyzer-based transcription result type. |
-| `SpeechAnalyzer.Options` | struct | `Speech.swiftinterface` | No analyzer options type. |
-| `SpeechAnalyzer.Options.ModelRetention` | enum | `Speech.swiftinterface` | No equivalent model-retention enum. |
-| `AnalysisContext` | class | `Speech.swiftinterface` | No API for analyzer contextual strings or user-data injection. |
-| `AnalysisContext.ContextualStringsTag` | struct | `Speech.swiftinterface` | No equivalent contextual-string tag type. |
-| `AnalysisContext.UserDataTag` | struct | `Speech.swiftinterface` | No equivalent user-data tag type. |
-| `AssetInstallationRequest` | class | `Speech.swiftinterface` | No binding for async asset download/install progress. |
-| `DataInsertable` | protocol | `Speech.swiftinterface` | No training-data builder trait. |
-| `TemplateInsertable` | protocol | `Speech.swiftinterface` | No template-training builder trait. |
-| `SFCustomLanguageModelData` | class | `Speech.swiftinterface` | `speech-rs` can prepare compiled assets, but cannot author/export custom language-model training data. |
-| `SFCustomLanguageModelData.PhraseCount` | struct | `Speech.swiftinterface` | No equivalent phrase-count training-data node. |
-| `SFCustomLanguageModelData.CustomPronunciation` | struct | `Speech.swiftinterface` | No equivalent custom-pronunciation node. |
-| `SFCustomLanguageModelData.DataInsertableBuilder` | struct | `Speech.swiftinterface` | No result-builder-style API for composing training data. |
-| `SFCustomLanguageModelData.PhraseCountGenerator` | class | `Speech.swiftinterface` | No async phrase-count generator binding. |
-| `SFCustomLanguageModelData.PhraseCountGenerator.Iterator` | class | `Speech.swiftinterface` | No iterator binding for phrase-count generation. |
-| `SFCustomLanguageModelData.TemplatePhraseCountGenerator` | class | `Speech.swiftinterface` | No template-based phrase-count generator binding. |
-| `SFCustomLanguageModelData.TemplatePhraseCountGenerator.Template` | struct | `Speech.swiftinterface` | No template node binding. |
-| `SFCustomLanguageModelData.TemplatePhraseCountGenerator.Iterator` | class | `Speech.swiftinterface` | No iterator binding for template-driven phrase-count generation. |
-| `SFCustomLanguageModelData.CompoundTemplate` | struct | `Speech.swiftinterface` | No compound-template binding. |
-| `SFCustomLanguageModelData.TemplateInsertableBuilder` | struct | `Speech.swiftinterface` | No result-builder-style API for composing template inputs. |
-| `SFCustomLanguageModelData.PhraseCountsFromTemplates` | struct | `Speech.swiftinterface` | No helper that expands template classes into phrase counts. |
-| `SFSpeechError.Code` (macOS 26 extension cases) | Swift extension | `Speech.swiftinterface` | `SpeechFrameworkErrorCode` stops at the header-defined cases; `audioDisordered`, `unexpectedAudioFormat`, `noModel`, `assetLocaleNotAllocated`, `tooManyAssetLocalesAllocated`, `incompatibleAudioFormats`, `moduleOutputFailed`, `cannotAllocateUnsupportedLocale`, and `insufficientResources` are not surfaced. |
+None.
 
 ## ⏭️ EXEMPT
 | Symbol | Kind | Header | Reason | SDK attribute |
