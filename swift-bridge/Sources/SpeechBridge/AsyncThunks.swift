@@ -207,13 +207,23 @@ public func sp_prepare_custom_language_model_async(
                             cont.resume()
                         }
                     }
+                    // Apple split the API on macOS 26: the older form requires
+                    // `clientIdentifier:`, the newer system-managed form drops
+                    // it. We use the older form unconditionally — it stays
+                    // available on every supported macOS, it's just marked
+                    // deprecated on 26+ (the system-managed variant doesn't
+                    // exist on macOS 14/15 runners).
+                    let bundleIdentifier =
+                        Bundle.main.bundleIdentifier ?? "doom-fish.speech-rs.bridge"
                     if ignoresCache {
                         SFSpeechLanguageModel.prepareCustomLanguageModel(
-                            for: assetURL, configuration: configuration, ignoresCache: true,
+                            for: assetURL, clientIdentifier: bundleIdentifier,
+                            configuration: configuration, ignoresCache: true,
                             completion: handler)
                     } else {
                         SFSpeechLanguageModel.prepareCustomLanguageModel(
-                            for: assetURL, configuration: configuration,
+                            for: assetURL, clientIdentifier: bundleIdentifier,
+                            configuration: configuration,
                             completion: handler)
                     }
                 }
