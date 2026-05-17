@@ -288,6 +288,63 @@ extern "C" {
     ) -> i32;
 }
 
+// ============================================================================
+// Async callback-based FFI declarations (feature = "async")
+// ============================================================================
+
+/// Callback type for `sp_request_authorization_async`.
+/// Delivers the raw `SFSpeechRecognizerAuthorizationStatus` code as `i32`.
+pub type AuthAsyncCallback = unsafe extern "C" fn(status: i32, ctx: *mut c_void);
+
+/// Callback type for `sp_recognize_url_async` and `sp_speech_analyzer_analyze_url_async`.
+///
+/// On success: `result_json` is non-null, `error_cstr` is null.
+/// On failure: `result_json` is null, `error_cstr` is non-null.
+pub type StringAsyncCallback =
+    unsafe extern "C" fn(result_json: *const c_char, error_cstr: *const c_char, ctx: *mut c_void);
+
+/// Callback type for `sp_prepare_custom_language_model_async`.
+/// On success: `error_cstr` is null.  On failure: `error_cstr` is non-null.
+pub type VoidAsyncCallback = unsafe extern "C" fn(error_cstr: *const c_char, ctx: *mut c_void);
+
+extern "C" {
+    /// Non-blocking bridge for `SFSpeechRecognizer.requestAuthorization`.
+    /// Fires `cb(status_code, ctx)` once on the authorization queue.
+    pub fn sp_request_authorization_async(cb: AuthAsyncCallback, ctx: *mut c_void);
+
+    /// Non-blocking one-shot URL recognition via `SFSpeechRecognitionTask`.
+    /// Fires `cb(json, nil, ctx)` on success, `cb(nil, error, ctx)` on failure.
+    /// JSON payload is compatible with `DetailedRecognitionResult`.
+    pub fn sp_recognize_url_async(
+        audio_path: *const c_char,
+        locale_id: *const c_char,
+        recognizer_json: *const c_char,
+        request_json: *const c_char,
+        cb: StringAsyncCallback,
+        ctx: *mut c_void,
+    );
+
+    /// Non-blocking `SpeechAnalyzer` analysis (macOS 26.0+).
+    /// Fires `cb(json, nil, ctx)` on success, `cb(nil, error, ctx)` on failure.
+    /// JSON payload is compatible with `SpeechAnalyzerOutput`.
+    pub fn sp_speech_analyzer_analyze_url_async(
+        audio_path: *const c_char,
+        analyzer_json: *const c_char,
+        cb: StringAsyncCallback,
+        ctx: *mut c_void,
+    );
+
+    /// Non-blocking `SFSpeechLanguageModel.prepareCustomLanguageModel` (macOS 14.0+).
+    /// Fires `cb(nil, ctx)` on success, `cb(error, ctx)` on failure.
+    pub fn sp_prepare_custom_language_model_async(
+        asset_path: *const c_char,
+        configuration_json: *const c_char,
+        ignores_cache: bool,
+        cb: VoidAsyncCallback,
+        ctx: *mut c_void,
+    );
+}
+
 #[repr(C)]
 pub struct RecognitionMetadataRaw {
     pub has_metadata: bool,

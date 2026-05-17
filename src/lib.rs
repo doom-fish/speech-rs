@@ -16,6 +16,10 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+#[cfg(feature = "async")]
+#[cfg_attr(docsrs, doc(cfg(feature = "async")))]
+pub mod async_api;
+
 pub mod analyzer;
 pub mod asset_inventory;
 pub mod custom_language_model;

@@ -1,6 +1,35 @@
 # Changelog
 
-## [0.7.1] - 2026-05-16
+## [0.8.0] - 2026-05-16
+
+### Added
+
+- **`async` feature gate** — new `async_api` module with four executor-agnostic
+  Rust `Future` newtypes backed by non-blocking Swift `@_cdecl` thunks:
+  - `AsyncSpeechRecognizer::request_authorization()` →
+    `AuthorizationFuture` — wraps `SFSpeechRecognizer.requestAuthorization`
+    (completion-handler, macOS 13+)
+  - `AsyncSpeechRecognizer::recognize_url(recognizer, request)` →
+    `RecognizeUrlFuture` — one-shot `SFSpeechRecognitionTask` that resolves
+    with `DetailedRecognitionResult` on the final result (macOS 13+)
+  - `AsyncSpeechAnalyzer::analyze_in_path(analyzer, path)` →
+    `AnalyzeUrlFuture` — wraps the native `async throws` `SpeechAnalyzer`
+    API (macOS 26.0+; immediately resolves with `RecognizerUnavailable` on
+    older OS)
+  - `AsyncSpeechLanguageModel::prepare_custom_language_model(asset, config)` →
+    `PrepareLanguageModelFuture` — wraps
+    `SFSpeechLanguageModel.prepareCustomLanguageModel` (completion-handler,
+    macOS 14.0+)
+- Swift bridge `AsyncThunks.swift` — four `@_cdecl` thunks using
+  `Task.detached` + `withCheckedThrowingContinuation` so Rust threads are
+  never blocked
+- `doom-fish-utils` dependency (path sibling, `AsyncCompletion` + `error_from_cstr`)
+- `pollster` dev-dependency for running async examples synchronously
+- `examples/05_async_smoke.rs` — headless smoke test; skips permission-gated
+  paths with a graceful message
+- `tests/async_api_tests.rs` — happy path + four error-path tests using
+  `pollster::block_on`
+
 
 ### Added
 

@@ -1098,6 +1098,55 @@ impl SpeechAnalyzer {
     }
 }
 
+/// Parse a `SpeechAnalyzerOutput` from the JSON string returned by the Swift bridge.
+///
+/// `modules` must be the same slice that was sent to the analyzer (used to
+/// populate the `module` field on each `SpeechAnalyzerModuleOutput`).
+pub(crate) fn parse_analyzer_output_json(
+    json: &str,
+    modules: &[SpeechModuleDescriptor],
+) -> Result<SpeechAnalyzerOutput, SpeechError> {
+    let payload = serde_json::from_str::<SpeechAnalyzerOutputPayload>(json).map_err(|e| {
+        SpeechError::InvalidArgument(format!(
+            "failed to parse speech analyzer output JSON: {e}; payload={json}"
+        ))
+    })?;
+    let module_outputs = payload
+        .modules
+        .into_iter()
+        .map(|module_payload| {
+            let module = modules.get(module_payload.module_index).cloned().ok_or_else(|| {
+                SpeechError::InvalidArgument(format!(
+                    "speech analyzer output referenced unknown module index {}",
+                    module_payload.module_index
+                ))
+            })?;
+            let results = match module_payload.kind.as_str() {
+                "speechTranscriber" => SpeechAnalyzerModuleResults::SpeechTranscriber(
+                    module_payload.transcriber_results.unwrap_or_default(),
+                ),
+                "speechDetector" => SpeechAnalyzerModuleResults::SpeechDetector(
+                    module_payload.detector_results.unwrap_or_default(),
+                ),
+                other => {
+                    return Err(SpeechError::InvalidArgument(format!(
+                        "speech analyzer returned unsupported module kind {other}"
+                    )));
+                }
+            };
+            Ok(SpeechAnalyzerModuleOutput {
+                module_index: module_payload.module_index,
+                module,
+                results,
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(SpeechAnalyzerOutput {
+        modules: module_outputs,
+        volatile_range: payload.volatile_range,
+    })
+}
+
 /// Output collected from a file-backed `SpeechAnalyzer` run.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SpeechAnalyzerOutput {

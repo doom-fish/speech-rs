@@ -2,7 +2,51 @@
 
 Safe Rust bindings for Apple's [Speech](https://developer.apple.com/documentation/speech) framework on macOS.
 
-> **Status:** v0.7.1 audits the classic `SFSpeech*` recognition surface and now covers the remaining macOS 26 analyzer, asset-inventory, and custom language-model authoring APIs alongside `DictationTranscriber`.
+> **Status:** v0.8.0 adds a Tier-1 `async` feature with four executor-agnostic
+> Future newtypes.  v0.7 audited the classic `SFSpeech*` recognition surface
+> and covers the macOS 26 analyzer, asset-inventory, and custom language-model
+> authoring APIs alongside `DictationTranscriber`.
+
+## Async API
+
+Enable the `async` feature to get executor-agnostic `Future` wrappers for
+Speech.framework's callback-handler and `async throws` APIs:
+
+```toml
+[dependencies]
+speech = { version = "0.8", features = ["async"] }
+```
+
+```rust,no_run
+use speech::async_api::{AsyncSpeechRecognizer, AsyncSpeechAnalyzer};
+use speech::analyzer::{SpeechAnalyzer, SpeechTranscriber, SpeechTranscriberPreset};
+
+# #[tokio::main]
+# async fn main() -> Result<(), Box<dyn std::error::Error>> {
+// 1. Request authorization (non-blocking)
+let status = AsyncSpeechRecognizer::request_authorization().await?;
+println!("status: {status:?}");
+
+// 2. Recognize a URL file (one-shot, resolves with final result)
+use speech::{recognizer::SpeechRecognizer, request::UrlRecognitionRequest};
+let recognizer = SpeechRecognizer::new();
+let request = UrlRecognitionRequest::new("audio.m4a");
+let result = AsyncSpeechRecognizer::recognize_url(&recognizer, &request)?.await?;
+println!("{}", result.best_transcription.formatted_string);
+# Ok(())
+# }
+```
+
+| Future | API | OS |
+|--------|-----|----|
+| `AuthorizationFuture` | `SFSpeechRecognizer.requestAuthorization` | macOS 13+ |
+| `RecognizeUrlFuture` | `SFSpeechRecognitionTask` one-shot | macOS 13+ |
+| `AnalyzeUrlFuture` | `SpeechAnalyzer` native `async throws` | macOS 26+ |
+| `PrepareLanguageModelFuture` | `SFSpeechLanguageModel.prepareCustomLanguageModel` | macOS 14+ |
+
+> **Tier-2 note:** multi-fire delegate patterns (live recognition updates,
+> `SFSpeechRecognitionTaskDelegate` event streams) map to `Stream`s, not
+> `Future`s, and are tracked in the Tier-2 milestone.
 
 ## Quick start
 

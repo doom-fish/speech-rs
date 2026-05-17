@@ -3,7 +3,7 @@ import CoreMedia
 import Foundation
 import Speech
 
-private func spxSpeechAnalyzerUnavailableMessage() -> String {
+func spxSpeechAnalyzerUnavailableMessage() -> String {
   "SpeechAnalyzer, SpeechTranscriber, and SpeechDetector require the macOS 26 SDK and macOS 26 runtime"
 }
 
@@ -394,7 +394,7 @@ private func spxCollectAnalyzerOutputs(from modules: [any SpeechModule]) async t
 }
 
 @available(macOS 26.0, *)
-private func spxRunSpeechAnalyzer(
+func spxRunSpeechAnalyzer(
   audioPath: String,
   payload: SPXSpeechAnalyzerPayload
 ) async throws -> String {
