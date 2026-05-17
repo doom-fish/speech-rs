@@ -39,8 +39,14 @@ private func spxPrepareCustomLanguageModel(
       }
     }
   } else if ignoresCache {
+    // The clientIdentifier-free overload only exists on macOS 26+.
+    // Older runner SDKs require the clientIdentifier form; use a
+    // bundle-derived fallback identifier when the caller didn't pass one.
+    let fallbackIdentifier =
+      Bundle.main.bundleIdentifier ?? "doom-fish.speech-rs.bridge"
     SFSpeechLanguageModel.prepareCustomLanguageModel(
       for: assetURL,
+      clientIdentifier: fallbackIdentifier,
       configuration: configuration,
       ignoresCache: true
     ) { error in
@@ -48,8 +54,13 @@ private func spxPrepareCustomLanguageModel(
       semaphore.signal()
     }
   } else {
-    SFSpeechLanguageModel.prepareCustomLanguageModel(for: assetURL, configuration: configuration) {
-      error in
+    let fallbackIdentifier =
+      Bundle.main.bundleIdentifier ?? "doom-fish.speech-rs.bridge"
+    SFSpeechLanguageModel.prepareCustomLanguageModel(
+      for: assetURL,
+      clientIdentifier: fallbackIdentifier,
+      configuration: configuration
+    ) { error in
       finalError = error
       semaphore.signal()
     }
