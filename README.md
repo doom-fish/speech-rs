@@ -90,7 +90,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - `RecognitionTask` / `AudioBufferRecognitionTask` with RAII cleanup, task state inspection, delegate events, cancellation, finishing, and manual PCM/sample-buffer appends
 - `DetailedRecognitionResult`, `Transcription`, `TranscriptionSegmentDetails`, `DetailedRecognitionMetadata`, `VoiceAnalytics`, `AcousticFeature`
 - `SpeechLanguageModel::prepare_custom_language_model*`, `LanguageModelConfiguration`, and `SFCustomLanguageModelData` authoring/export helpers
-- `SpeechAnalyzer`, `SpeechTranscriber`, `SpeechDetector`, `AnalysisContext`, `SpeechModels`, and `AssetInventory`
+- `SpeechAnalyzer`, `SpeechTranscriber`, `SpeechDetector`, `AnalysisContext`, `SpeechModels`, and `AssetInventory` for whole-file analysis; live `SpeechAnalyzer` input (`AnalyzerInput` streams) is not supported yet
 - attributed `SpeechTranscriptionResult` values with Speech confidence/time-range spans plus `SpeechModule`/`SpeechModuleResult` traits
 - `DictationTranscriber` with presets or explicit dictation options, locale discovery, compatible-audio-format inspection, and file-based transcription results
 - `RecognizerAvailabilityObserver` for `SFSpeechRecognizerDelegate`

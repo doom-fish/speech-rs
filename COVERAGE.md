@@ -37,11 +37,12 @@ This audit tracks the public Speech.framework surface explicitly requested for t
 
 | Apple API | Status | Notes |
 | --- | --- | --- |
-| `SpeechAnalyzer` | ✅ implemented | `src/analyzer.rs`, `swift-bridge/Sources/SpeechBridge/AnalyzerBridge.swift` |
+| `SpeechAnalyzer` | ✅ whole-file input only | `src/analyzer.rs`, `swift-bridge/Sources/SpeechBridge/AnalyzerBridge.swift`; streaming input (`start(inputSequence:)`, `analyzeSequence(_:)`), `prepareToAnalyze(in:)`, `finalize(through:)`, `cancelAnalysis(before:)` and the volatile-range handler are not bridged |
 | `SpeechTranscriber` | ✅ implemented | `src/analyzer.rs`, `AnalyzerBridge.swift` |
 | `SpeechDetector` | ✅ implemented | `src/analyzer.rs`, `AnalyzerBridge.swift` |
 | `AssetInventory` / `AssetInstallationRequest` | ✅ implemented | `src/asset_inventory.rs`, `swift-bridge/Sources/SpeechBridge/AssetInventoryBridge.swift` |
-| `AnalysisContext`, `AnalyzerInput`, `SpeechModels` | ✅ implemented | `src/analyzer.rs`, `AnalyzerBridge.swift` |
+| `AnalysisContext`, `SpeechModels` | ✅ implemented | `src/analyzer.rs`, `AnalyzerBridge.swift` |
+| `AnalyzerInput` | ⚠️ constructible only | `src/analyzer.rs`; no analyzer API accepts it, because live `SpeechAnalyzer` input is not implemented |
 | `SpeechAttributes` helpers | ✅ implemented | `SpeechAttributedText`, `SpeechAttributeSpan`, `SpeechConfidenceAttribute`, `SpeechTimeRangeAttribute` in `src/analyzer.rs`, encoded by `AnalyzerBridge.swift` |
 
 ## Custom language-model authoring

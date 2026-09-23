@@ -3,10 +3,14 @@
 This audit treats exported Obj-C types/protocols/enums/constants as one symbol each, then adds the Swift-overlay-only types and standalone extension helpers that materially expand Speech.framework on macOS 26.2. For the legacy Obj-C interfaces, member-level completeness is also validated by `cargo test --test api_coverage -- --nocapture`; deprecated members are broken out under EXEMPT and excluded from the coverage denominator even when `speech-rs` still wraps them.
 
 SDK_PUBLIC_SYMBOLS: 77
-VERIFIED: 71
-GAPS: 0
+VERIFIED: 70
+GAPS: 1
 EXEMPT: 6
-COVERAGE_PCT: 100.0%
+COVERAGE_PCT: 98.6%
+
+## What these numbers measure
+
+Each row is one top-level symbol, so a row can be VERIFIED while some of its members are missing; member-level completeness is only checked for the classic Obj-C classes, by `tests/api_coverage.rs`. The known member gap is `SpeechAnalyzer`, which is wrapped for whole-file analysis only: `start(inputSequence:)`, `analyzeSequence(_:)`, `prepareToAnalyze(in:)`, `finalize(through:)`, `cancelAnalysis(before:)`, the volatile-range handler and streamed results are not bridged. The top-level symbol list was rechecked against MacOSX26.5.sdk on 2026-09-23 and no new top-level Speech types were found.
 
 ## 🟢 VERIFIED
 | Symbol | Kind | Header | Wrapped by |
@@ -45,8 +49,7 @@ COVERAGE_PCT: 100.0%
 | `Foundation.AttributeScopes.SpeechAttributes.ConfidenceAttribute` | struct | `Speech.swiftinterface` | `SpeechConfidenceAttribute` |
 | `Foundation.AttributeScopes.SpeechAttributes.TimeRangeAttribute` | struct | `Speech.swiftinterface` | `SpeechTimeRangeAttribute` |
 | `Foundation.AttributedString.rangeOfAudioTimeRangeAttributes(intersecting:)` | extension func | `Speech.swiftinterface` | `SpeechAttributedText::range_of_audio_time_range_attributes_intersecting` |
-| `SpeechAnalyzer` | actor | `Speech.swiftinterface` | `SpeechAnalyzer::{new,with_options,with_context,analyze_in_path,best_available_audio_format}` |
-| `AnalyzerInput` | struct | `Speech.swiftinterface` | `AnalyzerInput::{from_audio_pcm_buffer_raw,from_audio_pcm_buffer_raw_with_start_time}` |
+| `SpeechAnalyzer` | actor | `Speech.swiftinterface` | `SpeechAnalyzer::{new,with_options,with_context,analyze_in_path,best_available_audio_format}` (whole-file input only, see above) |
 | `SpeechModels` | enum | `Speech.swiftinterface` | `SpeechModels::end_retention` |
 | `SpeechDetector` | class | `Speech.swiftinterface` | `SpeechDetector::{new,default,available_compatible_audio_formats,detect_in_path}` |
 | `SpeechDetector.SensitivityLevel` | enum | `Speech.swiftinterface` | `SpeechDetectorSensitivityLevel` |
@@ -84,7 +87,9 @@ COVERAGE_PCT: 100.0%
 | `SFSpeechError.Code` (macOS 26 extension cases) | Swift extension | `Speech.swiftinterface` | `SpeechFrameworkErrorCode::{AudioDisordered,UnexpectedAudioFormat,NoModel,AssetLocaleNotAllocated,TooManyAssetLocalesAllocated,IncompatibleAudioFormats,ModuleOutputFailed,CannotAllocateUnsupportedLocale,InsufficientResources}` |
 
 ## 🔴 GAPS
-None.
+| Symbol | Kind | Header | Gap |
+| --- | --- | --- | --- |
+| `AnalyzerInput` | struct | `Speech.swiftinterface` | `AnalyzerInput::{from_audio_pcm_buffer_raw,from_audio_pcm_buffer_raw_with_start_time}` builds a value, but no API accepts it: the analyzer's streaming input (`init(inputSequence:modules:options:)`, `start(inputSequence:)`, `analyzeSequence(_:)`) is not bridged, so live `SpeechAnalyzer` input is not possible. |
 
 ## ⏭️ EXEMPT
 | Symbol | Kind | Header | Reason | SDK attribute |
