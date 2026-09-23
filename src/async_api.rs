@@ -36,19 +36,20 @@
 //! # }
 //! ```
 
-use std::ffi::{c_void, CStr};
+use std::ffi::{c_char, c_void, CStr};
 use std::future::Future;
 use std::path::Path;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use doom_fish_utils::completion::{error_from_cstr, AsyncCompletion, AsyncCompletionFuture};
+use doom_fish_utils::completion::{AsyncCompletion, AsyncCompletionFuture};
+use doom_fish_utils::panic_safe::catch_user_panic;
 
 use crate::analyzer::{parse_analyzer_output_json, SpeechAnalyzer, SpeechAnalyzerOutput};
 use crate::error::{AuthorizationStatus, SpeechError};
 use crate::ffi;
 use crate::language_model::LanguageModelConfiguration;
-use crate::private::{cstring_from_path, json_cstring};
+use crate::private::{cstring_from_path, error_from_status_and_message, json_cstring};
 use crate::recognizer::SpeechRecognizer;
 use crate::request::UrlRecognitionRequest;
 use crate::transcription::DetailedRecognitionResult;
@@ -114,26 +115,25 @@ impl Future for AuthorizationFuture {
 // 2. RecognizeUrlFuture — SFSpeechRecognitionTask one-shot
 // ============================================================================
 
-/// C callback for `sp_recognize_url_async`.
-///
-/// # Safety
-/// `ctx` must be a valid `AsyncCompletion<String>` context pointer.
-unsafe extern "C" fn recognize_url_cb(
-    json: *const i8,
-    error: *const i8,
+unsafe extern "C" fn string_result_cb(
+    json: *const c_char,
+    error: *const c_char,
+    status: i32,
     ctx: *mut c_void,
 ) {
-    if !error.is_null() {
-        let msg = unsafe { error_from_cstr(error) };
-        unsafe { AsyncCompletion::<String>::complete_err(ctx, msg) };
-    } else if !json.is_null() {
-        let s = unsafe { CStr::from_ptr(json).to_string_lossy().into_owned() };
-        unsafe { AsyncCompletion::complete_ok(ctx, s) };
-    } else {
-        unsafe {
-            AsyncCompletion::<String>::complete_err(ctx, "recognition returned no result".into());
+    catch_user_panic("speech::async_api::string_result_cb", || {
+        let outcome = if !error.is_null() {
+            let message = unsafe { CStr::from_ptr(error) }.to_string_lossy().into_owned();
+            Err(error_from_status_and_message(status, message))
+        } else if json.is_null() {
+            Err(SpeechError::RecognitionFailed(
+                "the Speech bridge returned no result".into(),
+            ))
+        } else {
+            Ok(unsafe { CStr::from_ptr(json) }.to_string_lossy().into_owned())
         };
-    }
+        unsafe { AsyncCompletion::complete_ok(ctx, outcome) };
+    });
 }
 
 /// Future returned by [`AsyncSpeechRecognizer::recognize_url`].
@@ -142,7 +142,7 @@ unsafe extern "C" fn recognize_url_cb(
 /// result has been produced, or a [`SpeechError`] on failure.
 #[must_use = "futures do nothing unless polled"]
 pub struct RecognizeUrlFuture {
-    inner: AsyncCompletionFuture<String>,
+    inner: AsyncCompletionFuture<Result<String, SpeechError>>,
 }
 
 impl std::fmt::Debug for RecognizeUrlFuture {
@@ -156,9 +156,13 @@ impl Future for RecognizeUrlFuture {
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         Pin::new(&mut self.inner).poll(cx).map(|r| {
-            r.map_err(SpeechError::RecognitionFailed).and_then(|json| {
-                parse_json_string::<DetailedRecognitionResult>(&json, "detailed recognition result")
-            })
+            r.unwrap_or_else(|message| Err(SpeechError::RecognitionFailed(message)))
+                .and_then(|json| {
+                    parse_json_string::<DetailedRecognitionResult>(
+                        &json,
+                        "detailed recognition result",
+                    )
+                })
         })
     }
 }
@@ -167,28 +171,6 @@ impl Future for RecognizeUrlFuture {
 // 3. AnalyzeUrlFuture — SpeechAnalyzer (macOS 26.0+)
 // ============================================================================
 
-/// C callback for `sp_speech_analyzer_analyze_url_async`.
-///
-/// # Safety
-/// `ctx` must be a valid `AsyncCompletion<String>` context pointer.
-unsafe extern "C" fn analyze_url_cb(
-    json: *const i8,
-    error: *const i8,
-    ctx: *mut c_void,
-) {
-    if !error.is_null() {
-        let msg = unsafe { error_from_cstr(error) };
-        unsafe { AsyncCompletion::<String>::complete_err(ctx, msg) };
-    } else if !json.is_null() {
-        let s = unsafe { CStr::from_ptr(json).to_string_lossy().into_owned() };
-        unsafe { AsyncCompletion::complete_ok(ctx, s) };
-    } else {
-        unsafe {
-            AsyncCompletion::<String>::complete_err(ctx, "analyzer returned no result".into());
-        };
-    }
-}
-
 /// Future returned by [`AsyncSpeechAnalyzer::analyze_in_path`].
 ///
 /// Resolves to a [`SpeechAnalyzerOutput`] on success, or a [`SpeechError`]
@@ -196,7 +178,7 @@ unsafe extern "C" fn analyze_url_cb(
 /// resolves immediately with [`SpeechError::RecognizerUnavailable`].
 #[must_use = "futures do nothing unless polled"]
 pub struct AnalyzeUrlFuture {
-    inner: AsyncCompletionFuture<String>,
+    inner: AsyncCompletionFuture<Result<String, SpeechError>>,
     /// The analyzer's module list, kept to reconstruct `SpeechAnalyzerOutput`
     /// from the JSON payload returned by the Swift bridge.
     modules: Vec<SpeechModuleDescriptor>,
@@ -214,7 +196,7 @@ impl Future for AnalyzeUrlFuture {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let modules = self.modules.clone();
         Pin::new(&mut self.inner).poll(cx).map(|r| {
-            r.map_err(SpeechError::RecognitionFailed)
+            r.unwrap_or_else(|message| Err(SpeechError::RecognitionFailed(message)))
                 .and_then(|json| parse_analyzer_output_json(&json, &modules))
         })
     }
@@ -224,17 +206,20 @@ impl Future for AnalyzeUrlFuture {
 // 4. PrepareLanguageModelFuture — SFSpeechLanguageModel.prepareCustomLanguageModel
 // ============================================================================
 
-/// C callback for `sp_prepare_custom_language_model_async`.
-///
-/// # Safety
-/// `ctx` must be a valid `AsyncCompletion<()>` context pointer.
-unsafe extern "C" fn prepare_language_model_cb(error: *const i8, ctx: *mut c_void) {
-    if error.is_null() {
-        unsafe { AsyncCompletion::complete_ok(ctx, ()) };
-    } else {
-        let msg = unsafe { error_from_cstr(error) };
-        unsafe { AsyncCompletion::<()>::complete_err(ctx, msg) };
-    }
+unsafe extern "C" fn prepare_language_model_cb(
+    error: *const c_char,
+    status: i32,
+    ctx: *mut c_void,
+) {
+    catch_user_panic("speech::async_api::prepare_language_model_cb", || {
+        let outcome = if error.is_null() {
+            Ok(())
+        } else {
+            let message = unsafe { CStr::from_ptr(error) }.to_string_lossy().into_owned();
+            Err(error_from_status_and_message(status, message))
+        };
+        unsafe { AsyncCompletion::complete_ok(ctx, outcome) };
+    });
 }
 
 /// Future returned by [`AsyncSpeechLanguageModel::prepare_custom_language_model`].
@@ -243,7 +228,7 @@ unsafe extern "C" fn prepare_language_model_cb(error: *const i8, ctx: *mut c_voi
 /// Requires macOS 14.0+.
 #[must_use = "futures do nothing unless polled"]
 pub struct PrepareLanguageModelFuture {
-    inner: AsyncCompletionFuture<()>,
+    inner: AsyncCompletionFuture<Result<(), SpeechError>>,
 }
 
 impl std::fmt::Debug for PrepareLanguageModelFuture {
@@ -259,7 +244,7 @@ impl Future for PrepareLanguageModelFuture {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         Pin::new(&mut self.inner)
             .poll(cx)
-            .map(|r| r.map_err(SpeechError::RecognitionFailed))
+            .map(|r| r.unwrap_or_else(|message| Err(SpeechError::RecognitionFailed(message))))
     }
 }
 
@@ -328,15 +313,16 @@ impl AsyncSpeechRecognizer {
         let locale_id = recognizer.locale_cstring();
 
         let (future, ctx) = AsyncCompletion::create();
-        // Safety: all C-string pointers are valid for the duration of the call;
-        //         ctx is a valid AsyncCompletion context pointer.
+        // Safety: the bridge copies every C string before it returns, so the
+        //         pointers only have to outlive this call; ctx is a valid
+        //         AsyncCompletion context pointer.
         unsafe {
             ffi::sp_recognize_url_async(
                 audio_path.as_ptr(),
                 locale_id.as_ref().map_or(std::ptr::null(), |c| c.as_ptr()),
                 recognizer_json.as_ptr(),
                 request_json.as_ptr(),
-                recognize_url_cb,
+                string_result_cb,
                 ctx,
             );
         }
@@ -392,13 +378,14 @@ impl AsyncSpeechAnalyzer {
         let modules = analyzer.modules().to_vec();
 
         let (future, ctx) = AsyncCompletion::create();
-        // Safety: C-string pointers are valid for the duration of the call;
-        //         ctx is a valid AsyncCompletion context pointer.
+        // Safety: the bridge copies every C string before it returns, so the
+        //         pointers only have to outlive this call; ctx is a valid
+        //         AsyncCompletion context pointer.
         unsafe {
             ffi::sp_speech_analyzer_analyze_url_async(
                 audio_path.as_ptr(),
                 analyzer_json.as_ptr(),
-                analyze_url_cb,
+                string_result_cb,
                 ctx,
             );
         }
@@ -464,8 +451,9 @@ impl AsyncSpeechLanguageModel {
         let config_c = configuration.to_json_cstring()?;
 
         let (future, ctx) = AsyncCompletion::create();
-        // Safety: C-string pointers are valid for the duration of the call;
-        //         ctx is a valid AsyncCompletion context pointer.
+        // Safety: the bridge copies every C string before it returns, so the
+        //         pointers only have to outlive this call; ctx is a valid
+        //         AsyncCompletion context pointer.
         unsafe {
             ffi::sp_prepare_custom_language_model_async(
                 asset_c.as_ptr(),

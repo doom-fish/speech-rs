@@ -17,20 +17,20 @@ final class SPXAsyncBridgeState<T: Sendable>: @unchecked Sendable {
   }
 }
 
+func spxErrorMessage(_ error: SPXBridgeError) -> String {
+  if case let .framework(wrapped) = error,
+    let json = try? spxEncodeJSON(spxEncodeTaskError(wrapped as NSError))
+  {
+    return json
+  }
+  return error.description
+}
+
 func spxWriteError(
   _ error: SPXBridgeError,
   to outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
 ) {
-  switch error {
-  case let .framework(wrapped):
-    if let json = try? spxEncodeJSON(spxEncodeTaskError(wrapped as NSError)) {
-      outErrorMessage?.pointee = spxCString(json)
-    } else {
-      outErrorMessage?.pointee = spxCString(error.description)
-    }
-  default:
-    outErrorMessage?.pointee = spxCString(error.description)
-  }
+  outErrorMessage?.pointee = spxCString(spxErrorMessage(error))
 }
 
 func spxRunAsyncBridgeBlocking<T: Sendable>(

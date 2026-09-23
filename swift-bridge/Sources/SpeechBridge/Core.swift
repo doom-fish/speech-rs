@@ -37,6 +37,36 @@ func spxRetain(_ object: some AnyObject) -> UnsafeMutableRawPointer {
   Unmanaged.passRetained(object).toOpaque()
 }
 
+final class SPXFinalResultGate: @unchecked Sendable {
+  private let lock = NSLock()
+  private var admitted = false
+
+  func admits(hasResult: Bool, isFinal: Bool, hasError: Bool) -> Bool {
+    guard hasError || !hasResult || isFinal else { return false }
+    lock.lock()
+    defer { lock.unlock() }
+    guard !admitted else { return false }
+    admitted = true
+    return true
+  }
+}
+
+@_cdecl("sp_final_result_gate_admitted_mask")
+public func sp_final_result_gate_admitted_mask(_ events: UnsafePointer<UInt8>?, _ count: Int)
+  -> UInt64
+{
+  guard let events, count > 0 else { return 0 }
+  let gate = SPXFinalResultGate()
+  var mask: UInt64 = 0
+  for index in 0..<min(count, 64) {
+    let event = events[index]
+    if gate.admits(hasResult: event <= 1, isFinal: event == 1, hasError: event == 2) {
+      mask |= 1 << UInt64(index)
+    }
+  }
+  return mask
+}
+
 func spxUnretained<T: AnyObject>(_ ptr: UnsafeMutableRawPointer, as type: T.Type = T.self) -> T {
   Unmanaged<T>.fromOpaque(ptr).takeUnretainedValue()
 }

@@ -55,7 +55,10 @@ pub unsafe fn error_from_status_or_json(status: i32, err_msg: *mut c_char) -> Sp
     let Some(message) = take_string(err_msg) else {
         return crate::error::from_swift(status, std::ptr::null_mut());
     };
+    error_from_status_and_message(status, message)
+}
 
+pub fn error_from_status_and_message(status: i32, message: String) -> SpeechError {
     if let Ok(payload) = serde_json::from_str::<FrameworkErrorPayload>(&message) {
         let kind = SpeechFrameworkErrorCode::from_domain_code_and_message(
             &payload.domain,
@@ -70,7 +73,10 @@ pub unsafe fn error_from_status_or_json(status: i32, err_msg: *mut c_char) -> Sp
         });
     }
 
-    with_fallback_message(crate::error::from_swift(status, std::ptr::null_mut()), message)
+    with_fallback_message(
+        unsafe { crate::error::from_swift(status, std::ptr::null_mut()) },
+        message,
+    )
 }
 
 #[derive(serde::Deserialize)]

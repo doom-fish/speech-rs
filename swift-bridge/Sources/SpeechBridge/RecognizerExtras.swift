@@ -164,19 +164,18 @@ public func sp_recognize_url_detailed_json(
     try spxApplyRequestPayload(requestPayload, recognizerPayload: recognizerPayload, to: request)
 
     let semaphore = DispatchSemaphore(value: 0)
+    let gate = SPXFinalResultGate()
     var finalResult: SFSpeechRecognitionResult?
     var finalError: Error?
 
     let task = recognizer.recognitionTask(with: request) { result, error in
-      if let error {
-        finalError = error
-        semaphore.signal()
-        return
-      }
-      if let result, result.isFinal {
-        finalResult = result
-        semaphore.signal()
-      }
+      guard
+        gate.admits(
+          hasResult: result != nil, isFinal: result?.isFinal ?? false, hasError: error != nil)
+      else { return }
+      finalResult = result
+      finalError = error
+      semaphore.signal()
     }
 
     let waited = semaphore.wait(timeout: .now() + .seconds(120))

@@ -336,12 +336,17 @@ pub type AuthAsyncCallback = unsafe extern "C" fn(status: i32, ctx: *mut c_void)
 ///
 /// On success: `result_json` is non-null, `error_cstr` is null.
 /// On failure: `result_json` is null, `error_cstr` is non-null.
-pub type StringAsyncCallback =
-    unsafe extern "C" fn(result_json: *const c_char, error_cstr: *const c_char, ctx: *mut c_void);
+pub type StringAsyncCallback = unsafe extern "C" fn(
+    result_json: *const c_char,
+    error_cstr: *const c_char,
+    status: i32,
+    ctx: *mut c_void,
+);
 
 /// Callback type for `sp_prepare_custom_language_model_async`.
 /// On success: `error_cstr` is null.  On failure: `error_cstr` is non-null.
-pub type VoidAsyncCallback = unsafe extern "C" fn(error_cstr: *const c_char, ctx: *mut c_void);
+pub type VoidAsyncCallback =
+    unsafe extern "C" fn(error_cstr: *const c_char, status: i32, ctx: *mut c_void);
 
 extern "C" {
     /// Non-blocking bridge for `SFSpeechRecognizer.requestAuthorization`.
@@ -349,7 +354,7 @@ extern "C" {
     pub fn sp_request_authorization_async(cb: AuthAsyncCallback, ctx: *mut c_void);
 
     /// Non-blocking one-shot URL recognition via `SFSpeechRecognitionTask`.
-    /// Fires `cb(json, nil, ctx)` on success, `cb(nil, error, ctx)` on failure.
+    /// Fires `cb(json, nil, 0, ctx)` on success, `cb(nil, error, status, ctx)` on failure.
     /// JSON payload is compatible with `DetailedRecognitionResult`.
     pub fn sp_recognize_url_async(
         audio_path: *const c_char,
@@ -361,7 +366,7 @@ extern "C" {
     );
 
     /// Non-blocking `SpeechAnalyzer` analysis (macOS 26.0+).
-    /// Fires `cb(json, nil, ctx)` on success, `cb(nil, error, ctx)` on failure.
+    /// Fires `cb(json, nil, 0, ctx)` on success, `cb(nil, error, status, ctx)` on failure.
     /// JSON payload is compatible with `SpeechAnalyzerOutput`.
     pub fn sp_speech_analyzer_analyze_url_async(
         audio_path: *const c_char,
@@ -371,7 +376,7 @@ extern "C" {
     );
 
     /// Non-blocking `SFSpeechLanguageModel.prepareCustomLanguageModel` (macOS 14.0+).
-    /// Fires `cb(nil, ctx)` on success, `cb(error, ctx)` on failure.
+    /// Fires `cb(nil, 0, ctx)` on success, `cb(error, status, ctx)` on failure.
     pub fn sp_prepare_custom_language_model_async(
         asset_path: *const c_char,
         configuration_json: *const c_char,
@@ -379,6 +384,9 @@ extern "C" {
         cb: VoidAsyncCallback,
         ctx: *mut c_void,
     );
+
+    #[doc(hidden)]
+    pub fn sp_final_result_gate_admitted_mask(events: *const u8, count: usize) -> u64;
 }
 
 #[repr(C)]
