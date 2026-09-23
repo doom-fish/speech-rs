@@ -38,11 +38,6 @@ name = "speech"
 crate-type = ["lib"]
 
 [features]
-default = ["recognize_url"]
-
-# Per-input feature flags. Future: recognize_audio_buffer (live mic / CMSampleBuffer).
-recognize_url = []
-
 # Async API: wraps completion-handler and async-throws Swift APIs as Rust Futures.
 # Requires `doom-fish-utils` (path = "../doom-fish-utils").
 async = []
@@ -67,10 +62,6 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [badges]
 maintenance = { status = "actively-developed" }
-
-[[example]]
-name = "01_recognize_smoke"
-required-features = ["recognize_url"]
 
 [[example]]
 name = "05_async_smoke"
