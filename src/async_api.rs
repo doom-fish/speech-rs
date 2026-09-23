@@ -282,7 +282,7 @@ impl AsyncSpeechRecognizer {
     /// Recognize speech in the audio file at `path` asynchronously.
     ///
     /// Uses `SFSpeechRecognitionTask` with a result-handler that fires once
-    /// with the final result.  Returns `Err` if a [`CString`] can't be
+    /// with the final result.  Returns `Err` if a [`CString`](std::ffi::CString) can't be
     /// constructed from the path, locale, or options (e.g., NUL byte).
     ///
     /// # Errors
