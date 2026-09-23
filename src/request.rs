@@ -113,15 +113,29 @@ impl From<&CallbackQueue> for QueuePayload {
 }
 
 /// Configuration shared by URL and audio-buffer recognition requests.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RecognitionRequestOptions {
     task_hint: Option<TaskHint>,
     should_report_partial_results: Option<bool>,
     contextual_strings: Vec<String>,
     interaction_identifier: Option<String>,
-    requires_on_device_recognition: Option<bool>,
+    requires_on_device_recognition: bool,
     adds_punctuation: Option<bool>,
     customized_language_model: Option<LanguageModelConfiguration>,
+}
+
+impl Default for RecognitionRequestOptions {
+    fn default() -> Self {
+        Self {
+            task_hint: None,
+            should_report_partial_results: None,
+            contextual_strings: Vec::new(),
+            interaction_identifier: None,
+            requires_on_device_recognition: true,
+            adds_punctuation: None,
+            customized_language_model: None,
+        }
+    }
 }
 
 impl RecognitionRequestOptions {
@@ -205,7 +219,7 @@ impl RecognitionRequestOptions {
     }
 
     #[must_use]
-    pub const fn requires_on_device_recognition(&self) -> Option<bool> {
+    pub const fn requires_on_device_recognition(&self) -> bool {
         self.requires_on_device_recognition
     }
 
@@ -214,12 +228,12 @@ impl RecognitionRequestOptions {
         mut self,
         requires_on_device_recognition: bool,
     ) -> Self {
-        self.requires_on_device_recognition = Some(requires_on_device_recognition);
+        self.requires_on_device_recognition = requires_on_device_recognition;
         self
     }
 
     pub fn set_requires_on_device_recognition(&mut self, requires_on_device_recognition: bool) {
-        self.requires_on_device_recognition = Some(requires_on_device_recognition);
+        self.requires_on_device_recognition = requires_on_device_recognition;
     }
 
     #[must_use]
@@ -273,7 +287,7 @@ pub(crate) struct RequestPayload {
     should_report_partial_results: Option<bool>,
     contextual_strings: Option<Vec<String>>,
     interaction_identifier: Option<String>,
-    requires_on_device_recognition: Option<bool>,
+    requires_on_device_recognition: bool,
     adds_punctuation: Option<bool>,
     customized_language_model: Option<LanguageModelConfigurationPayload>,
 }
@@ -427,5 +441,43 @@ impl From<AudioFormatPayload> for AudioFormat {
             is_interleaved: value.is_interleaved,
             common_format: AudioCommonFormat::from_raw(value.common_format),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AudioBufferRecognitionRequest, RecognitionRequestOptions, UrlRecognitionRequest};
+
+    fn payload_json(options: &RecognitionRequestOptions) -> String {
+        options
+            .to_json_cstring()
+            .expect("options encode as JSON")
+            .into_string()
+            .expect("the JSON payload is UTF-8")
+    }
+
+    #[test]
+    fn recognition_stays_on_device_unless_server_recognition_is_requested() {
+        assert!(RecognitionRequestOptions::default().requires_on_device_recognition());
+        assert!(RecognitionRequestOptions::new().requires_on_device_recognition());
+        assert!(UrlRecognitionRequest::new("audio.m4a")
+            .options()
+            .requires_on_device_recognition());
+        assert!(AudioBufferRecognitionRequest::new()
+            .options()
+            .requires_on_device_recognition());
+
+        let server = RecognitionRequestOptions::new().with_requires_on_device_recognition(false);
+        assert!(!server.requires_on_device_recognition());
+    }
+
+    #[test]
+    fn the_bridge_payload_always_states_the_on_device_requirement() {
+        assert!(payload_json(&RecognitionRequestOptions::default())
+            .contains(r#""requiresOnDeviceRecognition":true"#));
+        assert!(payload_json(
+            &RecognitionRequestOptions::new().with_requires_on_device_recognition(false)
+        )
+        .contains(r#""requiresOnDeviceRecognition":false"#));
     }
 }

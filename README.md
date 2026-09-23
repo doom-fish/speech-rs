@@ -99,6 +99,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `SFSpeechRecognizer` requires `NSSpeechRecognitionUsageDescription` in your app's `Info.plist` plus an authorization request. CLI binaries without a proper bundle typically get `Denied`; the smoke example exits cleanly when authorization is unavailable.
 
+## Privacy: on-device by default
+
+`RecognitionRequestOptions::default()` requires on-device recognition, and every `SFSpeechRecognizer` path in this crate sends that setting explicitly: `recognize_in_path`, `recognize_request`, URL and audio-buffer tasks, `LiveRecognition`, and the async API. Audio is never sent to Apple's servers unless you opt in:
+
+```rust,no_run
+use speech::prelude::*;
+
+let request = UrlRecognitionRequest::new("audio.m4a").with_options(
+    RecognitionRequestOptions::new().with_requires_on_device_recognition(false),
+);
+```
+
+On-device requests fail when the locale has no on-device model, so check `SpeechRecognizer::supports_on_device_recognition()` before relying on them. The macOS 26 analyzer modules (`SpeechTranscriber`, `SpeechDetector`, `DictationTranscriber`) use models installed through `AssetInventory` and don't take this option.
+
 ## Smoke examples
 
 Run the end-to-end framework smoke test with:

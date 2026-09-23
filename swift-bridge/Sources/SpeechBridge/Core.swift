@@ -314,9 +314,7 @@ func spxApplyRequestPayload(
   if let interactionIdentifier = payload?.interactionIdentifier {
     request.interactionIdentifier = interactionIdentifier
   }
-  if let requiresOnDeviceRecognition = payload?.requiresOnDeviceRecognition {
-    request.requiresOnDeviceRecognition = requiresOnDeviceRecognition
-  }
+  request.requiresOnDeviceRecognition = payload?.requiresOnDeviceRecognition ?? true
   if let addsPunctuation = payload?.addsPunctuation {
     if #available(macOS 13.0, *) {
       request.addsPunctuation = addsPunctuation
