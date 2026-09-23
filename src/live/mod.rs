@@ -131,7 +131,7 @@ impl LiveRecognition {
                 trampoline,
                 cb_raw,
                 ctx_release,
-                &mut err_msg,
+                &raw mut err_msg,
             )
         };
         if token.is_null() {

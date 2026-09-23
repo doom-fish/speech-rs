@@ -82,7 +82,7 @@ impl AssetInstallationRequest {
     pub fn download_and_install(&self) -> Result<(), SpeechError> {
         let mut err_msg = ptr::null_mut();
         let status = unsafe {
-            ffi::sp_asset_installation_request_download_and_install(self.token, &mut err_msg)
+            ffi::sp_asset_installation_request_download_and_install(self.token, &raw mut err_msg)
         };
         if status == ffi::status::OK {
             Ok(())
@@ -101,7 +101,7 @@ impl AssetInventory {
         let mut value = 0usize;
         let mut err_msg = ptr::null_mut();
         let status = unsafe {
-            ffi::sp_asset_inventory_maximum_reserved_locales(&mut value, &mut err_msg)
+            ffi::sp_asset_inventory_maximum_reserved_locales(&raw mut value, &raw mut err_msg)
         };
         if status == ffi::status::OK {
             Ok(value)
@@ -113,7 +113,7 @@ impl AssetInventory {
     pub fn reserved_locales() -> Result<Vec<String>, SpeechError> {
         let mut json = ptr::null_mut();
         let mut err_msg = ptr::null_mut();
-        let status = unsafe { ffi::sp_asset_inventory_reserved_locales_json(&mut json, &mut err_msg) };
+        let status = unsafe { ffi::sp_asset_inventory_reserved_locales_json(&raw mut json, &raw mut err_msg) };
         if status != ffi::status::OK {
             return Err(unsafe { error_from_status_or_json(status, err_msg) });
         }
@@ -127,8 +127,8 @@ impl AssetInventory {
         let status = unsafe {
             ffi::sp_asset_inventory_reserve_locale(
                 locale_identifier.as_ptr(),
-                &mut reserved,
-                &mut err_msg,
+                &raw mut reserved,
+                &raw mut err_msg,
             )
         };
         if status == ffi::status::OK {
@@ -145,8 +145,8 @@ impl AssetInventory {
         let status = unsafe {
             ffi::sp_asset_inventory_release_locale(
                 locale_identifier.as_ptr(),
-                &mut released,
-                &mut err_msg,
+                &raw mut released,
+                &raw mut err_msg,
             )
         };
         if status == ffi::status::OK {
@@ -168,8 +168,8 @@ impl AssetInventory {
         let status = unsafe {
             ffi::sp_asset_inventory_status_for_modules(
                 modules_json.as_ptr(),
-                &mut raw_status,
-                &mut err_msg,
+                &raw mut raw_status,
+                &raw mut err_msg,
             )
         };
         if status == ffi::status::OK {
@@ -193,8 +193,8 @@ impl AssetInventory {
         let token = unsafe {
             ffi::sp_asset_inventory_installation_request_for_modules(
                 modules_json.as_ptr(),
-                &mut has_request,
-                &mut err_msg,
+                &raw mut has_request,
+                &raw mut err_msg,
             )
         };
         if !err_msg.is_null() {

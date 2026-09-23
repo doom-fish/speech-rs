@@ -385,7 +385,7 @@ impl SpeechTranscriber {
     pub fn supported_locales() -> Result<Vec<String>, SpeechError> {
         let mut json = ptr::null_mut();
         let mut err_msg = ptr::null_mut();
-        let status = unsafe { ffi::sp_speech_transcriber_supported_locales_json(&mut json, &mut err_msg) };
+        let status = unsafe { ffi::sp_speech_transcriber_supported_locales_json(&raw mut json, &raw mut err_msg) };
         if status != ffi::status::OK {
             return Err(unsafe { error_from_status_or_json(status, err_msg) });
         }
@@ -395,7 +395,7 @@ impl SpeechTranscriber {
     pub fn installed_locales() -> Result<Vec<String>, SpeechError> {
         let mut json = ptr::null_mut();
         let mut err_msg = ptr::null_mut();
-        let status = unsafe { ffi::sp_speech_transcriber_installed_locales_json(&mut json, &mut err_msg) };
+        let status = unsafe { ffi::sp_speech_transcriber_installed_locales_json(&raw mut json, &raw mut err_msg) };
         if status != ffi::status::OK {
             return Err(unsafe { error_from_status_or_json(status, err_msg) });
         }
@@ -412,8 +412,8 @@ impl SpeechTranscriber {
         let status = unsafe {
             ffi::sp_speech_transcriber_supported_locale_identifier(
                 locale_identifier.as_ptr(),
-                &mut locale,
-                &mut err_msg,
+                &raw mut locale,
+                &raw mut err_msg,
             )
         };
         if status != ffi::status::OK {
@@ -429,8 +429,8 @@ impl SpeechTranscriber {
         let status = unsafe {
             ffi::sp_speech_transcriber_selected_locales_json(
                 config_json.as_ptr(),
-                &mut json,
-                &mut err_msg,
+                &raw mut json,
+                &raw mut err_msg,
             )
         };
         if status != ffi::status::OK {
@@ -446,8 +446,8 @@ impl SpeechTranscriber {
         let status = unsafe {
             ffi::sp_speech_transcriber_available_audio_formats_json(
                 config_json.as_ptr(),
-                &mut json,
-                &mut err_msg,
+                &raw mut json,
+                &raw mut err_msg,
             )
         };
         if status != ffi::status::OK {
@@ -646,8 +646,8 @@ impl SpeechDetector {
         let status = unsafe {
             ffi::sp_speech_detector_available_audio_formats_json(
                 config_json.as_ptr(),
-                &mut json,
-                &mut err_msg,
+                &raw mut json,
+                &raw mut err_msg,
             )
         };
         if status != ffi::status::OK {
@@ -1016,8 +1016,8 @@ impl SpeechAnalyzer {
         let status = unsafe {
             ffi::sp_speech_analyzer_best_audio_format_json(
                 modules_json.as_ptr(),
-                &mut json,
-                &mut err_msg,
+                &raw mut json,
+                &raw mut err_msg,
             )
         };
         if status != ffi::status::OK {
@@ -1047,8 +1047,8 @@ impl SpeechAnalyzer {
             ffi::sp_speech_analyzer_analyze_url_json(
                 audio_path.as_ptr(),
                 analyzer_json.as_ptr(),
-                &mut json,
-                &mut err_msg,
+                &raw mut json,
+                &raw mut err_msg,
             )
         };
         if status != ffi::status::OK {
@@ -1223,7 +1223,7 @@ pub struct SpeechModels;
 impl SpeechModels {
     pub fn end_retention() -> Result<(), SpeechError> {
         let mut err_msg = ptr::null_mut();
-        let status = unsafe { ffi::sp_speech_models_end_retention(&mut err_msg) };
+        let status = unsafe { ffi::sp_speech_models_end_retention(&raw mut err_msg) };
         if status == ffi::status::OK {
             Ok(())
         } else {

@@ -270,7 +270,7 @@ impl DictationTranscriber {
     pub fn supported_locales() -> Result<Vec<String>, SpeechError> {
         let mut json = ptr::null_mut();
         let mut err_msg = ptr::null_mut();
-        let status = unsafe { ffi::sp_dictation_supported_locales_json(&mut json, &mut err_msg) };
+        let status = unsafe { ffi::sp_dictation_supported_locales_json(&raw mut json, &raw mut err_msg) };
         if status != ffi::status::OK {
             return Err(unsafe { error_from_status(status, err_msg) });
         }
@@ -280,7 +280,7 @@ impl DictationTranscriber {
     pub fn installed_locales() -> Result<Vec<String>, SpeechError> {
         let mut json = ptr::null_mut();
         let mut err_msg = ptr::null_mut();
-        let status = unsafe { ffi::sp_dictation_installed_locales_json(&mut json, &mut err_msg) };
+        let status = unsafe { ffi::sp_dictation_installed_locales_json(&raw mut json, &raw mut err_msg) };
         if status != ffi::status::OK {
             return Err(unsafe { error_from_status(status, err_msg) });
         }
@@ -296,8 +296,8 @@ impl DictationTranscriber {
         let status = unsafe {
             ffi::sp_dictation_supported_locale_identifier(
                 locale_identifier.as_ptr(),
-                &mut locale,
-                &mut err_msg,
+                &raw mut locale,
+                &raw mut err_msg,
             )
         };
         if status != ffi::status::OK {
@@ -311,7 +311,7 @@ impl DictationTranscriber {
         let mut json = ptr::null_mut();
         let mut err_msg = ptr::null_mut();
         let status = unsafe {
-            ffi::sp_dictation_selected_locales_json(config_json.as_ptr(), &mut json, &mut err_msg)
+            ffi::sp_dictation_selected_locales_json(config_json.as_ptr(), &raw mut json, &raw mut err_msg)
         };
         if status != ffi::status::OK {
             return Err(unsafe { error_from_status(status, err_msg) });
@@ -326,8 +326,8 @@ impl DictationTranscriber {
         let status = unsafe {
             ffi::sp_dictation_available_audio_formats_json(
                 config_json.as_ptr(),
-                &mut json,
-                &mut err_msg,
+                &raw mut json,
+                &raw mut err_msg,
             )
         };
         if status != ffi::status::OK {
@@ -351,8 +351,8 @@ impl DictationTranscriber {
             ffi::sp_dictation_transcribe_url_json(
                 path.as_ptr(),
                 config_json.as_ptr(),
-                &mut json,
-                &mut err_msg,
+                &raw mut json,
+                &raw mut err_msg,
             )
         };
         if status != ffi::status::OK {

@@ -433,8 +433,8 @@ impl SFCustomLanguageModelData {
         let status = unsafe {
             ffi::sp_custom_language_model_supported_phonemes_json(
                 locale_identifier.as_ptr(),
-                &mut json,
-                &mut err_msg,
+                &raw mut json,
+                &raw mut err_msg,
             )
         };
         if status != ffi::status::OK {
@@ -461,7 +461,7 @@ impl SFCustomLanguageModelData {
             json_cstring(&CustomLanguageModelDataPayload::from(self), "custom language model data")?;
         let mut err_msg = std::ptr::null_mut();
         let status = unsafe {
-            ffi::sp_custom_language_model_export(json.as_ptr(), path.as_ptr(), &mut err_msg)
+            ffi::sp_custom_language_model_export(json.as_ptr(), path.as_ptr(), &raw mut err_msg)
         };
         if status == ffi::status::OK {
             Ok(())

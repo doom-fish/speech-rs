@@ -161,7 +161,7 @@ impl SpeechRecognizer {
             ffi::sp_recognizer_locale_identifier(
                 self.locale_ptr(),
                 recognizer_json.as_ptr(),
-                &mut err_msg,
+                &raw mut err_msg,
             )
         };
         if ptr.is_null() {
@@ -252,7 +252,7 @@ impl SpeechRecognizer {
                 callback_raw,
                 availability_ctx_retain,
                 availability_ctx_release,
-                &mut err_msg,
+                &raw mut err_msg,
             )
         };
         if token.is_null() {
@@ -279,8 +279,8 @@ impl SpeechRecognizer {
                 self.locale_ptr(),
                 recognizer_json.as_ptr(),
                 request_json.as_ptr(),
-                &mut result_json,
-                &mut err_msg,
+                &raw mut result_json,
+                &raw mut err_msg,
             )
         };
         if status != ffi::status::OK {
@@ -363,7 +363,7 @@ impl SpeechRecognizer {
                 callback_raw,
                 task_ctx_retain,
                 task_ctx_release,
-                &mut err_msg,
+                &raw mut err_msg,
             )
         };
         if token.is_null() {
@@ -396,7 +396,7 @@ impl SpeechRecognizer {
                 callback_raw,
                 task_ctx_retain,
                 task_ctx_release,
-                &mut err_msg,
+                &raw mut err_msg,
             )
         };
         if token.is_null() {
@@ -429,7 +429,7 @@ impl SpeechRecognizer {
                 callback_raw,
                 task_ctx_retain,
                 task_ctx_release,
-                &mut err_msg,
+                &raw mut err_msg,
             )
         };
         if token.is_null() {

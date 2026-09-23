@@ -279,7 +279,7 @@ impl AudioBufferRecognitionTask {
                     SpeechError::InvalidArgument("channel count does not fit into i32".into())
                 })?,
                 true,
-                &mut err_msg,
+                &raw mut err_msg,
             )
         };
         if status == ffi::status::OK {
@@ -306,7 +306,7 @@ impl AudioBufferRecognitionTask {
                     SpeechError::InvalidArgument("channel count does not fit into i32".into())
                 })?,
                 true,
-                &mut err_msg,
+                &raw mut err_msg,
             )
         };
         if status == ffi::status::OK {
@@ -325,7 +325,7 @@ impl AudioBufferRecognitionTask {
     ) -> Result<(), SpeechError> {
         let mut err_msg: *mut c_char = ptr::null_mut();
         let status =
-            ffi::sp_audio_buffer_task_append_pcm_buffer_raw(self.core.token, buffer, &mut err_msg);
+            ffi::sp_audio_buffer_task_append_pcm_buffer_raw(self.core.token, buffer, &raw mut err_msg);
         if status == ffi::status::OK {
             Ok(())
         } else {
@@ -344,7 +344,7 @@ impl AudioBufferRecognitionTask {
         let status = ffi::sp_audio_buffer_task_append_sample_buffer_raw(
             self.core.token,
             sample_buffer,
-            &mut err_msg,
+            &raw mut err_msg,
         );
         if status == ffi::status::OK {
             Ok(())

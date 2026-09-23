@@ -158,7 +158,7 @@ impl SpeechLanguageModel {
                     client_identifier_c.as_ptr(),
                     config_c.as_ptr(),
                     ignores_cache,
-                    &mut err_msg,
+                    &raw mut err_msg,
                 )
             }
         } else {
@@ -167,7 +167,7 @@ impl SpeechLanguageModel {
                     asset_c.as_ptr(),
                     config_c.as_ptr(),
                     ignores_cache,
-                    &mut err_msg,
+                    &raw mut err_msg,
                 )
             }
         };
