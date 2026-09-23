@@ -9,7 +9,7 @@ description = "Safe Rust bindings for Apple's Speech framework — on-device spe
 authors = ["Per Johansson <per@doom.fish>"]
 keywords = ["speech", "transcription", "macos", "asr", "apple"]
 categories = ["api-bindings", "os::macos-apis", "multimedia::audio"]
-rust-version = "1.76"
+rust-version = "1.82"
 readme = "README.md"
 build = "build.rs"
 include = [
@@ -48,7 +48,7 @@ recognize_url = []
 async = []
 
 [dependencies]
-doom-fish-utils = { path = "../doom-fish-utils", version = ">=0.1, <0.4" }
+doom-fish-utils = { path = "../doom-fish-utils", version = ">=0.4.1, <0.5" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

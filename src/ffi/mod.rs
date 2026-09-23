@@ -23,9 +23,6 @@ pub struct TranscriptionSegmentRaw {
 // corrupt. These compile-time assertions pin the exact ABI; the runtime
 // `sp_verify_ffi_layout` check in `tests/ffi_layout_tests.rs` guards that the
 // Swift `MemoryLayout` agrees too.
-//
-// NOTE: `offset_of!` is intentionally avoided here because it was only
-// stabilised in Rust 1.77, and this crate's MSRV is 1.76.
 use core::mem::{align_of, size_of};
 
 const _: () = assert!(size_of::<TranscriptionSegmentRaw>() == 32);
