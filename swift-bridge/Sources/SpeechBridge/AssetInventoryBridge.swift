@@ -18,9 +18,36 @@ struct SPXAssetInstallationProgressPayload: Codable {
 @available(macOS 26.0, *)
 private final class SPXAssetInstallationRequestBox: NSObject {
   let request: AssetInstallationRequest
+  private let lock = NSLock()
+  private var download: Task<Void, Error>?
 
   init(request: AssetInstallationRequest) {
     self.request = request
+  }
+
+  func downloadTask() -> Task<Void, Error> {
+    lock.lock()
+    defer { lock.unlock() }
+    if let download {
+      return download
+    }
+    let request = self.request
+    let download = Task { [weak self] in
+      do {
+        try await request.downloadAndInstall()
+      } catch {
+        self?.forgetDownload()
+        throw error
+      }
+    }
+    self.download = download
+    return download
+  }
+
+  private func forgetDownload() {
+    lock.lock()
+    download = nil
+    lock.unlock()
   }
 }
 
@@ -244,15 +271,23 @@ public func sp_asset_installation_request_progress_json(
 @_cdecl("sp_asset_installation_request_download_and_install")
 public func sp_asset_installation_request_download_and_install(
   _ token: UnsafeMutableRawPointer?,
+  _ timeoutSeconds: Double,
   _ outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
 ) -> Int32 {
   do {
     #if SPEECH_HAS_MACOS26_SDK
     if #available(macOS 26.0, *) {
-      let requestBox = try spxAssetInstallationRequestBox(token)
-      _ = try spxRunAsyncBridgeBlocking { () async throws -> Bool in
-        try await requestBox.request.downloadAndInstall()
-        return true
+      let download = try spxAssetInstallationRequestBox(token).downloadTask()
+      do {
+        _ = try spxRunAsyncBridgeBlocking(timeoutSeconds: timeoutSeconds >= 0 ? timeoutSeconds : nil) {
+          () async throws -> Bool in
+          try await download.value
+          return true
+        }
+      } catch SPXBridgeError.timedOut(_) {
+        throw SPXBridgeError.timedOut(
+          "the asset download did not finish within \(String(format: "%g", timeoutSeconds))s; it keeps running, so poll progress() or call download_and_install again to keep waiting"
+        )
       }
       return SPX_OK
     }

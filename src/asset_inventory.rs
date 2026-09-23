@@ -6,6 +6,7 @@
 
 use core::ffi::c_void;
 use std::ptr;
+use std::time::Duration;
 
 use serde::Deserialize;
 
@@ -79,10 +80,15 @@ impl AssetInstallationRequest {
         unsafe { parse_json_ptr::<AssetInstallationProgress>(ptr, "asset installation progress") }
     }
 
-    pub fn download_and_install(&self) -> Result<(), SpeechError> {
+    pub fn download_and_install(&self, timeout: Option<Duration>) -> Result<(), SpeechError> {
+        let timeout_seconds = timeout.map_or(-1.0, |timeout| timeout.as_secs_f64());
         let mut err_msg = ptr::null_mut();
         let status = unsafe {
-            ffi::sp_asset_installation_request_download_and_install(self.token, &raw mut err_msg)
+            ffi::sp_asset_installation_request_download_and_install(
+                self.token,
+                timeout_seconds,
+                &raw mut err_msg,
+            )
         };
         if status == ffi::status::OK {
             Ok(())

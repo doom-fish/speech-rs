@@ -34,7 +34,7 @@ func spxWriteError(
 }
 
 func spxRunAsyncBridgeBlocking<T: Sendable>(
-  timeoutSeconds: Int = 120,
+  timeoutSeconds: Double? = 120,
   operation: @escaping @Sendable () async throws -> T
 ) throws -> T {
   let semaphore = DispatchSemaphore(value: 0)
@@ -54,9 +54,16 @@ func spxRunAsyncBridgeBlocking<T: Sendable>(
     semaphore.signal()
   }
 
-  if semaphore.wait(timeout: .now() + .seconds(timeoutSeconds)) == .timedOut {
+  let deadline: DispatchTime
+  if let timeoutSeconds, timeoutSeconds.isFinite, timeoutSeconds < 1_000_000_000 {
+    deadline = .now() + max(timeoutSeconds, 0)
+  } else {
+    deadline = .distantFuture
+  }
+  if semaphore.wait(timeout: deadline) == .timedOut {
     task.cancel()
-    throw SPXBridgeError.timedOut("operation timed out after \(timeoutSeconds)s")
+    throw SPXBridgeError.timedOut(
+      "operation timed out after \(String(format: "%g", timeoutSeconds ?? 0))s")
   }
 
   guard let result = state.load() else {

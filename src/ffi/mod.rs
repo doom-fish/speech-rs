@@ -310,6 +310,7 @@ extern "C" {
     pub fn sp_asset_installation_request_progress_json(token: *mut c_void) -> *mut c_char;
     pub fn sp_asset_installation_request_download_and_install(
         token: *mut c_void,
+        timeout_seconds: f64,
         out_error_message: *mut *mut c_char,
     ) -> i32;
     pub fn sp_asset_installation_request_release(token: *mut c_void);
