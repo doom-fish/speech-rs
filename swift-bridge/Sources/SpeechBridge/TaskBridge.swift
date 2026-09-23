@@ -354,18 +354,30 @@ public func sp_start_microphone_task(
 
     let request = SFSpeechAudioBufferRecognitionRequest()
     try spxApplyRequestPayload(requestPayload, recognizerPayload: recognizerPayload, to: request)
+
+    let audioEngine = AVAudioEngine()
+    let inputNode = audioEngine.inputNode
+    let inputFormat = inputNode.outputFormat(forBus: 0)
+    guard inputFormat.channelCount > 0, inputFormat.sampleRate > 0 else {
+      throw SPXBridgeError.audioLoadFailed("no audio input device is available")
+    }
+
     let delegate = SPRustTaskDelegate(
       callback: callback, userInfo: userInfo, ctxRetain: ctxRetain, ctxRelease: ctxRelease)
     let task = recognizer.recognitionTask(with: request, delegate: delegate)
 
-    let audioEngine = AVAudioEngine()
-    let inputNode = audioEngine.inputNode
-    let nativeAudioFormat = request.nativeAudioFormat
-    inputNode.installTap(onBus: 0, bufferSize: 1024, format: nativeAudioFormat) { buffer, _ in
+    inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { buffer, _ in
       request.append(buffer)
     }
     audioEngine.prepare()
-    try audioEngine.start()
+    do {
+      try audioEngine.start()
+    } catch {
+      inputNode.removeTap(onBus: 0)
+      delegate.deactivate()
+      task.cancel()
+      throw error
+    }
 
     let taskBox = SPTaskBox(
       recognizer: recognizer,
