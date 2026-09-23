@@ -131,6 +131,7 @@ extern "C" {
         user_info: *mut c_void,
         ctx_retain: ContextRefCallback,
         ctx_release: ContextRefCallback,
+        out_status: *mut i32,
         out_error_message: *mut *mut c_char,
     ) -> *mut c_void;
     pub fn sp_start_audio_buffer_task(
@@ -141,6 +142,7 @@ extern "C" {
         user_info: *mut c_void,
         ctx_retain: ContextRefCallback,
         ctx_release: ContextRefCallback,
+        out_status: *mut i32,
         out_error_message: *mut *mut c_char,
     ) -> *mut c_void;
     pub fn sp_start_microphone_task(
@@ -151,6 +153,7 @@ extern "C" {
         user_info: *mut c_void,
         ctx_retain: ContextRefCallback,
         ctx_release: ContextRefCallback,
+        out_status: *mut i32,
         out_error_message: *mut *mut c_char,
     ) -> *mut c_void;
     pub fn sp_task_finish(token: *mut c_void);

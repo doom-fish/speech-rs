@@ -352,6 +352,7 @@ impl SpeechRecognizer {
         let request_json = request.options().to_json_cstring()?;
         let callback = make_task_callback(callback);
         let callback_raw = Arc::as_ptr(&callback).cast::<c_void>().cast_mut();
+        let mut status = ffi::status::RECOGNIZER_UNAVAILABLE;
         let mut err_msg: *mut c_char = ptr::null_mut();
         let token = unsafe {
             ffi::sp_start_url_task(
@@ -363,11 +364,12 @@ impl SpeechRecognizer {
                 callback_raw,
                 task_ctx_retain,
                 task_ctx_release,
+                &raw mut status,
                 &raw mut err_msg,
             )
         };
         if token.is_null() {
-            Err(unsafe { error_from_status(ffi::status::RECOGNIZER_UNAVAILABLE, err_msg) })
+            Err(unsafe { error_from_status(status, err_msg) })
         } else {
             Ok(RecognitionTask::from_token(token, callback))
         }
@@ -386,6 +388,7 @@ impl SpeechRecognizer {
         let request_json = request.options().to_json_cstring()?;
         let callback = make_task_callback(callback);
         let callback_raw = Arc::as_ptr(&callback).cast::<c_void>().cast_mut();
+        let mut status = ffi::status::RECOGNIZER_UNAVAILABLE;
         let mut err_msg: *mut c_char = ptr::null_mut();
         let token = unsafe {
             ffi::sp_start_audio_buffer_task(
@@ -396,11 +399,12 @@ impl SpeechRecognizer {
                 callback_raw,
                 task_ctx_retain,
                 task_ctx_release,
+                &raw mut status,
                 &raw mut err_msg,
             )
         };
         if token.is_null() {
-            Err(unsafe { error_from_status(ffi::status::RECOGNIZER_UNAVAILABLE, err_msg) })
+            Err(unsafe { error_from_status(status, err_msg) })
         } else {
             Ok(AudioBufferRecognitionTask::from_token(token, callback))
         }
@@ -419,6 +423,7 @@ impl SpeechRecognizer {
         let request_json = request.options().to_json_cstring()?;
         let callback = make_task_callback(callback);
         let callback_raw = Arc::as_ptr(&callback).cast::<c_void>().cast_mut();
+        let mut status = ffi::status::RECOGNIZER_UNAVAILABLE;
         let mut err_msg: *mut c_char = ptr::null_mut();
         let token = unsafe {
             ffi::sp_start_microphone_task(
@@ -429,11 +434,12 @@ impl SpeechRecognizer {
                 callback_raw,
                 task_ctx_retain,
                 task_ctx_release,
+                &raw mut status,
                 &raw mut err_msg,
             )
         };
         if token.is_null() {
-            Err(unsafe { error_from_status(ffi::status::RECOGNIZER_UNAVAILABLE, err_msg) })
+            Err(unsafe { error_from_status(status, err_msg) })
         } else {
             Ok(AudioBufferRecognitionTask::from_token(token, callback))
         }

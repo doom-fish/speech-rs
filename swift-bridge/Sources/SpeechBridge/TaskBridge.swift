@@ -251,6 +251,7 @@ public func sp_start_url_task(
   _ userInfo: UnsafeMutableRawPointer?,
   _ ctxRetain: @escaping SPContextRefCallback,
   _ ctxRelease: @escaping SPContextRefCallback,
+  _ outStatus: UnsafeMutablePointer<Int32>?,
   _ outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
 ) -> UnsafeMutableRawPointer? {
   do {
@@ -270,9 +271,11 @@ public func sp_start_url_task(
       ctxRelease: ctxRelease
     )
   } catch let error as SPXBridgeError {
+    outStatus?.pointee = error.statusCode
     outErrorMessage?.pointee = spxCString(error.description)
     return nil
   } catch {
+    outStatus?.pointee = SPX_UNKNOWN
     outErrorMessage?.pointee = spxCString(error.localizedDescription)
     return nil
   }
@@ -287,9 +290,11 @@ public func sp_start_audio_buffer_task(
   _ userInfo: UnsafeMutableRawPointer?,
   _ ctxRetain: @escaping SPContextRefCallback,
   _ ctxRelease: @escaping SPContextRefCallback,
+  _ outStatus: UnsafeMutablePointer<Int32>?,
   _ outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
 ) -> UnsafeMutableRawPointer? {
   do {
+    try spxEnsureAuthorized()
     let recognizerPayload = try spxDecodeJSONIfPresent(
       recognizerJson, as: SPXRecognizerPayload.self)
     let requestPayload = try spxDecodeJSONIfPresent(requestJson, as: SPXRequestPayload.self)
@@ -314,9 +319,11 @@ public func sp_start_audio_buffer_task(
     )
     return spxRetain(taskBox)
   } catch let error as SPXBridgeError {
+    outStatus?.pointee = error.statusCode
     outErrorMessage?.pointee = spxCString(error.description)
     return nil
   } catch {
+    outStatus?.pointee = SPX_UNKNOWN
     outErrorMessage?.pointee = spxCString(error.localizedDescription)
     return nil
   }
@@ -331,6 +338,7 @@ public func sp_start_microphone_task(
   _ userInfo: UnsafeMutableRawPointer?,
   _ ctxRetain: @escaping SPContextRefCallback,
   _ ctxRelease: @escaping SPContextRefCallback,
+  _ outStatus: UnsafeMutablePointer<Int32>?,
   _ outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
 ) -> UnsafeMutableRawPointer? {
   do {
@@ -370,9 +378,11 @@ public func sp_start_microphone_task(
     )
     return spxRetain(taskBox)
   } catch let error as SPXBridgeError {
+    outStatus?.pointee = error.statusCode
     outErrorMessage?.pointee = spxCString(error.description)
     return nil
   } catch {
+    outStatus?.pointee = SPX_UNKNOWN
     outErrorMessage?.pointee = spxCString(error.localizedDescription)
     return nil
   }
