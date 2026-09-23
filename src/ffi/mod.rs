@@ -74,7 +74,9 @@ extern "C" {
         locale_id: *const c_char,
         callback: LiveCallback,
         user_info: *mut c_void,
+        ctx_retain: ContextRefCallback,
         ctx_release: ContextRefCallback,
+        out_status: *mut i32,
         out_error_message: *mut *mut c_char,
     ) -> *mut c_void;
     pub fn sp_live_recognition_stop(token: *mut c_void);
@@ -387,6 +389,16 @@ extern "C" {
 
     #[doc(hidden)]
     pub fn sp_final_result_gate_admitted_mask(events: *const u8, count: usize) -> u64;
+
+    #[doc(hidden)]
+    pub fn sp_live_result_relay_exercise(
+        callback: LiveCallback,
+        user_info: *mut c_void,
+        ctx_retain: ContextRefCallback,
+        ctx_release: ContextRefCallback,
+        final_flags: *const bool,
+        count: usize,
+    );
 }
 
 #[repr(C)]

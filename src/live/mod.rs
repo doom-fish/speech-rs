@@ -4,12 +4,12 @@
 use core::ffi::{c_char, c_void};
 use core::ptr;
 use std::ffi::CString;
-use std::sync::Arc;
 
-use doom_fish_utils::panic_safe::catch_user_panic;
+use doom_fish_utils::callback_context::CallbackContext;
 
 use crate::error::SpeechError;
 use crate::ffi;
+use crate::private::error_from_status;
 
 /// One update from the live recogniser.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,13 +22,10 @@ pub struct LiveUpdate {
 
 type Callback = Box<dyn Fn(LiveUpdate) + Send + Sync + 'static>;
 
-struct CallbackBox {
-    callback: Callback,
-}
-
 /// RAII guard for a running live recognition session. Drop to stop.
 pub struct LiveRecognition {
     token: *mut c_void,
+    context: CallbackContext<Callback>,
 }
 
 unsafe impl Send for LiveRecognition {}
@@ -36,6 +33,7 @@ unsafe impl Sync for LiveRecognition {}
 
 impl Drop for LiveRecognition {
     fn drop(&mut self) {
+        self.context.deactivate();
         if !self.token.is_null() {
             unsafe { ffi::sp_live_recognition_stop(self.token) };
             self.token = ptr::null_mut();
@@ -43,39 +41,13 @@ impl Drop for LiveRecognition {
     }
 }
 
-/// C trampoline handed to the Swift `LiveSession`, invoked from its `deinit` to
-/// drop the `Arc<CallbackBox>` reference that was transferred across FFI via
-/// `Arc::into_raw` in [`LiveRecognition::start`]. Because the Swift session owns
-/// this reference and only releases it in `deinit` (after the underlying
-/// recognition task has been cancelled), the callback context outlives any
-/// in-flight callback — closing the use-after-free window that existed when a
-/// bare `Arc::as_ptr` pointer was handed across FFI with no ownership transfer.
-///
 /// # Safety
 ///
-/// `user_info` must be `null` or a pointer previously produced by
-/// `Arc::into_raw` for a `CallbackBox` that has not yet been released.
-unsafe extern "C" fn ctx_release(user_info: *mut c_void) {
-    if user_info.is_null() {
-        return;
-    }
-    // SAFETY: balances the `Arc::into_raw` in `LiveRecognition::start`.
-    drop(unsafe { Arc::from_raw(user_info.cast::<CallbackBox>()) });
-}
-
-/// # Safety
-///
-/// `user_info` must be a valid, non-aliased `*const CallbackBox` pointer kept
-/// alive for the lifetime of the recognition session, or `null`.
+/// `user_info` must be `null` or a `CallbackContext<Callback>` pointer that
+/// stays retained for the duration of the call.
 /// `transcript` must be a valid NUL-terminated C string or `null`.
 unsafe extern "C" fn trampoline(user_info: *mut c_void, transcript: *const c_char, is_final: bool) {
-    if user_info.is_null() {
-        return;
-    }
-    // SAFETY: Caller guarantees user_info is a valid *const CallbackBox for the
-    // session lifetime; null check above ensures it is non-null.
-    let cb = unsafe { &*user_info.cast::<CallbackBox>() };
-    let s = if transcript.is_null() {
+    let transcript = if transcript.is_null() {
         String::new()
     } else {
         // SAFETY: Caller guarantees transcript is a valid NUL-terminated C string.
@@ -83,12 +55,14 @@ unsafe extern "C" fn trampoline(user_info: *mut c_void, transcript: *const c_cha
             .to_string_lossy()
             .into_owned()
     };
-    catch_user_panic("speech::live::trampoline", || {
-        (cb.callback)(LiveUpdate {
-            transcript: s,
-            is_final,
-        });
-    });
+    unsafe {
+        CallbackContext::<Callback>::with(user_info, "speech::live::trampoline", |callback| {
+            callback(LiveUpdate {
+                transcript,
+                is_final,
+            });
+        })
+    };
 }
 
 impl LiveRecognition {
@@ -102,8 +76,11 @@ impl LiveRecognition {
     ///
     /// # Errors
     ///
-    /// Returns [`SpeechError::RecognizerUnavailable`] if Apple's recogniser
-    /// is unavailable, or [`SpeechError::InvalidArgument`] for invalid locale.
+    /// Returns [`SpeechError::NotAuthorized`] if speech recognition is not
+    /// authorized, [`SpeechError::RecognizerUnavailable`] if Apple's
+    /// recogniser is unavailable, [`SpeechError::AudioLoadFailed`] if no
+    /// audio input can be started, or [`SpeechError::InvalidArgument`] for
+    /// invalid locale.
     pub fn start<F>(locale: Option<&str>, callback: F) -> Result<Self, SpeechError>
     where
         F: Fn(LiveUpdate) + Send + Sync + 'static,
@@ -116,39 +93,25 @@ impl LiveRecognition {
             None => None,
         };
 
-        let cb_box = Arc::new(CallbackBox {
-            callback: Box::new(callback),
-        });
-        // Transfer ownership of the `Arc` to the Swift bridge. It is reclaimed
-        // (and dropped) by `ctx_release`, invoked from the Swift session's
-        // `deinit`, or here in the error path if the start call fails.
-        let cb_raw = Arc::into_raw(cb_box).cast::<c_void>().cast_mut();
-
+        let callback: Callback = Box::new(callback);
+        let context = CallbackContext::new(callback);
+        let mut status = ffi::status::RECOGNIZER_UNAVAILABLE;
         let mut err_msg: *mut c_char = ptr::null_mut();
         let token = unsafe {
             ffi::sp_live_recognition_start(
                 locale_c.as_ref().map_or(ptr::null(), |c| c.as_ptr()),
                 trampoline,
-                cb_raw,
-                ctx_release,
+                context.as_ptr(),
+                CallbackContext::<Callback>::RETAIN,
+                CallbackContext::<Callback>::RELEASE,
+                &raw mut status,
                 &raw mut err_msg,
             )
         };
         if token.is_null() {
-            // Start failed: Swift never took ownership, so reclaim the `Arc`.
-            drop(unsafe { Arc::from_raw(cb_raw.cast::<CallbackBox>()) });
-            let msg = if err_msg.is_null() {
-                "live recognition start failed".to_string()
-            } else {
-                let s = unsafe { core::ffi::CStr::from_ptr(err_msg) }
-                    .to_string_lossy()
-                    .into_owned();
-                unsafe { ffi::sp_string_free(err_msg) };
-                s
-            };
-            return Err(SpeechError::RecognizerUnavailable(msg));
+            return Err(unsafe { error_from_status(status, err_msg) });
         }
-        Ok(Self { token })
+        Ok(Self { token, context })
     }
 
     /// End the audio stream cleanly. Apple finalises any in-flight
@@ -169,5 +132,82 @@ impl LiveRecognition {
         if !self.token.is_null() {
             unsafe { ffi::sp_live_recognition_cancel(self.token) };
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use core::ffi::c_void;
+    use std::sync::{Arc, Mutex};
+
+    use doom_fish_utils::callback_context::CallbackContext;
+
+    use super::{trampoline, Callback, LiveUpdate};
+    use crate::ffi;
+
+    type Updates = Arc<Mutex<Vec<LiveUpdate>>>;
+
+    fn recording_context() -> (CallbackContext<Callback>, Updates) {
+        let updates = Updates::default();
+        let sink = Arc::clone(&updates);
+        let callback: Callback = Box::new(move |update| {
+            sink.lock().unwrap().push(update);
+        });
+        (CallbackContext::new(callback), updates)
+    }
+
+    fn exercise_relay(context: *mut c_void, finals: &[bool]) {
+        unsafe {
+            ffi::sp_live_result_relay_exercise(
+                trampoline,
+                context,
+                CallbackContext::<Callback>::RETAIN,
+                CallbackContext::<Callback>::RELEASE,
+                finals.as_ptr(),
+                finals.len(),
+            );
+        }
+    }
+
+    fn update(index: usize, is_final: bool) -> LiveUpdate {
+        LiveUpdate {
+            transcript: format!("update {index}"),
+            is_final,
+        }
+    }
+
+    #[test]
+    fn the_relay_stops_delivering_after_the_final_update() {
+        let (context, updates) = recording_context();
+        exercise_relay(context.as_ptr(), &[false, false, true, false]);
+        assert_eq!(
+            *updates.lock().unwrap(),
+            vec![update(0, false), update(1, false), update(2, true)]
+        );
+        drop(context);
+        assert_eq!(Arc::strong_count(&updates), 1);
+    }
+
+    #[test]
+    fn the_relay_releases_its_reference_without_a_final_update() {
+        let (context, updates) = recording_context();
+        exercise_relay(context.as_ptr(), &[false, false]);
+        assert_eq!(updates.lock().unwrap().len(), 2);
+        drop(context);
+        assert_eq!(Arc::strong_count(&updates), 1);
+    }
+
+    #[test]
+    fn updates_after_the_handle_is_dropped_never_reach_the_callback() {
+        let (context, updates) = recording_context();
+        let session_reference = context.retained_ptr();
+        drop(context);
+
+        exercise_relay(session_reference, &[false, true]);
+        assert!(updates.lock().unwrap().is_empty());
+        assert_eq!(Arc::strong_count(&updates), 2);
+
+        unsafe { (CallbackContext::<Callback>::RELEASE)(session_reference) };
+        assert_eq!(Arc::strong_count(&updates), 1);
     }
 }

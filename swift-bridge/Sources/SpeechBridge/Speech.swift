@@ -355,15 +355,57 @@ public typealias SPStreamCallback = @convention(c) (
     Bool                                 // is_final
 ) -> Void
 
+private final class SPLiveResultRelay {
+    private let callback: SPStreamCallback
+    private let ctxRetain: SPContextRefCallback
+    private let ctxRelease: SPContextRefCallback
+    private let lock = NSLock()
+    private var userInfo: UnsafeMutableRawPointer?
+
+    init(
+        callback: @escaping SPStreamCallback,
+        userInfo: UnsafeMutableRawPointer?,
+        ctxRetain: @escaping SPContextRefCallback,
+        ctxRelease: @escaping SPContextRefCallback
+    ) {
+        self.callback = callback
+        self.ctxRetain = ctxRetain
+        self.ctxRelease = ctxRelease
+        self.userInfo = userInfo
+        ctxRetain(userInfo)
+    }
+
+    deinit {
+        if let userInfo {
+            ctxRelease(userInfo)
+        }
+    }
+
+    func deliver(_ transcript: String, isFinal: Bool) {
+        lock.lock()
+        guard let context = userInfo else {
+            lock.unlock()
+            return
+        }
+        if isFinal {
+            userInfo = nil
+        } else {
+            ctxRetain(context)
+        }
+        lock.unlock()
+        transcript.withCString { ptr in
+            callback(context, ptr, isFinal)
+        }
+        ctxRelease(context)
+    }
+}
+
 private final class LiveSession {
     let recognizer: SFSpeechRecognizer
     let request: SFSpeechAudioBufferRecognitionRequest
     let audioEngine: AVAudioEngine
-    var task: SFSpeechRecognitionTask?
-    // Set by `sp_live_recognition_start`; released exactly once in `deinit` so
-    // the Rust callback context (an `Arc`) outlives any in-flight callback.
-    var userInfo: UnsafeMutableRawPointer?
-    var ctxRelease: SPContextRefCallback?
+    private let lock = NSLock()
+    private var task: SFSpeechRecognitionTask?
 
     init?(localeId: String) {
         let locale = Locale(identifier: localeId)
@@ -378,12 +420,77 @@ private final class LiveSession {
         self.audioEngine = AVAudioEngine()
     }
 
-    deinit {
-        ctxRelease?(userInfo)
+    func start(relay: SPLiveResultRelay) throws {
+        lock.lock()
+        defer { lock.unlock() }
+
+        // Install a tap on the input node to feed audio buffers into the request.
+        let inputNode = audioEngine.inputNode
+        let format = inputNode.outputFormat(forBus: 0)
+        guard format.channelCount > 0, format.sampleRate > 0 else {
+            throw SPXBridgeError.audioLoadFailed("no audio input device is available")
+        }
+        let request = self.request
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            request.append(buffer)
+        }
+
+        audioEngine.prepare()
+        do {
+            try audioEngine.start()
+        } catch {
+            inputNode.removeTap(onBus: 0)
+            throw SPXBridgeError.audioLoadFailed(
+                "audio engine start failed: \(error.localizedDescription)")
+        }
+
+        task = recognizer.recognitionTask(with: request) { result, error in
+            if let error {
+                relay.deliver("error: \(error.localizedDescription)", isFinal: true)
+                return
+            }
+            guard let result else { return }
+            relay.deliver(result.bestTranscription.formattedString, isFinal: result.isFinal)
+        }
+    }
+
+    private func stopAudioEngine() {
+        audioEngine.stop()
+        audioEngine.inputNode.removeTap(onBus: 0)
+    }
+
+    func endAudio() {
+        lock.lock()
+        defer { lock.unlock() }
+        stopAudioEngine()
+        request.endAudio()
+    }
+
+    func cancel() {
+        lock.lock()
+        defer { lock.unlock() }
+        stopAudioEngine()
+        task?.cancel()
+    }
+
+    func stop() {
+        lock.lock()
+        defer { lock.unlock() }
+        stopAudioEngine()
+        request.endAudio()
+        task?.cancel()
     }
 }
 
+private let liveSessionsLock = NSLock()
 private var liveSessions: [UnsafeMutableRawPointer: LiveSession] = [:]
+
+private func spxLiveSession(_ token: UnsafeMutableRawPointer?) -> LiveSession? {
+    guard let token else { return nil }
+    liveSessionsLock.lock()
+    defer { liveSessionsLock.unlock() }
+    return liveSessions[token]
+}
 
 /// Start a live audio-buffer recognition session. Returns an opaque
 /// token (never NULL on success) that you pass back to
@@ -393,75 +500,47 @@ public func sp_live_recognition_start(
     _ localeId: UnsafePointer<CChar>?,
     _ callback: @escaping SPStreamCallback,
     _ userInfo: UnsafeMutableRawPointer?,
+    _ ctxRetain: @escaping SPContextRefCallback,
     _ ctxRelease: @escaping SPContextRefCallback,
+    _ outStatus: UnsafeMutablePointer<Int32>?,
     _ outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
 ) -> UnsafeMutableRawPointer? {
-    let locale: String
-    if let p = localeId {
-        locale = String(cString: p)
-    } else {
-        locale = Locale.current.identifier
-    }
-    guard let session = LiveSession(localeId: locale) else {
-        // Construction failed: reclaim the transferred Rust ownership now,
-        // since no `LiveSession` exists to release it in `deinit`.
-        ctxRelease(userInfo)
-        outErrorMessage?.pointee = ffiString("recognizer unavailable for locale \(locale)")
-        return nil
-    }
-    session.userInfo = userInfo
-    session.ctxRelease = ctxRelease
-
-    // Install a tap on the input node to feed audio buffers into the request.
-    let inputNode = session.audioEngine.inputNode
-    let format = inputNode.outputFormat(forBus: 0)
-    inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
-        session.request.append(buffer)
-    }
-
-    session.audioEngine.prepare()
     do {
-        try session.audioEngine.start()
+        try spxEnsureAuthorized()
+        let locale = localeId.map { String(cString: $0) } ?? Locale.current.identifier
+        guard let session = LiveSession(localeId: locale) else {
+            throw SPXBridgeError.recognizerUnavailable("recognizer unavailable for locale \(locale)")
+        }
+        try session.start(
+            relay: SPLiveResultRelay(
+                callback: callback, userInfo: userInfo, ctxRetain: ctxRetain,
+                ctxRelease: ctxRelease))
+        let token = Unmanaged.passRetained(session).toOpaque()
+        liveSessionsLock.lock()
+        liveSessions[token] = session
+        liveSessionsLock.unlock()
+        return token
+    } catch let error as SPXBridgeError {
+        outStatus?.pointee = error.statusCode
+        outErrorMessage?.pointee = ffiString(error.description)
+        return nil
     } catch {
-        // The audio engine failed to start; release the Rust context before
-        // discarding the half-built session (its `deinit` would otherwise do it).
-        session.ctxRelease = nil
-        ctxRelease(userInfo)
-        outErrorMessage?.pointee = ffiString("audio engine start failed: \(error.localizedDescription)")
+        outStatus?.pointee = SP_UNKNOWN
+        outErrorMessage?.pointee = ffiString(error.localizedDescription)
         return nil
     }
-
-    session.task = session.recognizer.recognitionTask(with: session.request) { result, error in
-        if let error = error {
-            let msg = "error: \(error.localizedDescription)"
-            msg.withCString { ptr in
-                callback(userInfo, ptr, true)
-            }
-            return
-        }
-        guard let result = result else { return }
-        let text = result.bestTranscription.formattedString
-        text.withCString { ptr in
-            callback(userInfo, ptr, result.isFinal)
-        }
-    }
-
-    let token = Unmanaged.passRetained(session).toOpaque()
-    liveSessions[token] = session
-    return token
 }
 
 /// Stop a live recognition session started by `sp_live_recognition_start`.
 /// Safe to call multiple times.
 @_cdecl("sp_live_recognition_stop")
 public func sp_live_recognition_stop(_ token: UnsafeMutableRawPointer?) {
-    guard let token = token, let session = liveSessions.removeValue(forKey: token) else {
-        return
-    }
-    session.audioEngine.stop()
-    session.audioEngine.inputNode.removeTap(onBus: 0)
-    session.request.endAudio()
-    session.task?.cancel()
+    guard let token else { return }
+    liveSessionsLock.lock()
+    let session = liveSessions.removeValue(forKey: token)
+    liveSessionsLock.unlock()
+    guard let session else { return }
+    session.stop()
     Unmanaged<LiveSession>.fromOpaque(token).release()
 }
 
@@ -472,10 +551,7 @@ public func sp_live_recognition_stop(_ token: UnsafeMutableRawPointer?) {
 /// `sp_live_recognition_stop` afterwards to release resources.
 @_cdecl("sp_live_recognition_end_audio")
 public func sp_live_recognition_end_audio(_ token: UnsafeMutableRawPointer?) {
-    guard let token = token, let session = liveSessions[token] else { return }
-    session.audioEngine.stop()
-    session.audioEngine.inputNode.removeTap(onBus: 0)
-    session.request.endAudio()
+    spxLiveSession(token)?.endAudio()
 }
 
 /// Cancel the recognition task immediately and discard any in-flight
@@ -483,10 +559,24 @@ public func sp_live_recognition_end_audio(_ token: UnsafeMutableRawPointer?) {
 /// `sp_live_recognition_stop` afterwards to release resources.
 @_cdecl("sp_live_recognition_cancel")
 public func sp_live_recognition_cancel(_ token: UnsafeMutableRawPointer?) {
-    guard let token = token, let session = liveSessions[token] else { return }
-    session.audioEngine.stop()
-    session.audioEngine.inputNode.removeTap(onBus: 0)
-    session.task?.cancel()
+    spxLiveSession(token)?.cancel()
+}
+
+@_cdecl("sp_live_result_relay_exercise")
+public func sp_live_result_relay_exercise(
+    _ callback: @escaping SPStreamCallback,
+    _ userInfo: UnsafeMutableRawPointer?,
+    _ ctxRetain: @escaping SPContextRefCallback,
+    _ ctxRelease: @escaping SPContextRefCallback,
+    _ finalFlags: UnsafePointer<Bool>?,
+    _ count: Int
+) {
+    let relay = SPLiveResultRelay(
+        callback: callback, userInfo: userInfo, ctxRetain: ctxRetain, ctxRelease: ctxRelease)
+    guard let finalFlags, count > 0 else { return }
+    for index in 0..<count {
+        relay.deliver("update \(index)", isFinal: finalFlags[index])
+    }
 }
 
 // MARK: - Custom language model (v0.5)
