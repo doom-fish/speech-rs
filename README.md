@@ -2,10 +2,24 @@
 
 Safe Rust bindings for Apple's [Speech](https://developer.apple.com/documentation/speech) framework on macOS.
 
-> **Status:** v0.8.0 adds a Tier-1 `async` feature with four executor-agnostic
-> Future newtypes.  v0.7 audited the classic `SFSpeech*` recognition surface
-> and covers the macOS 26 analyzer, asset-inventory, and custom language-model
-> authoring APIs alongside `DictationTranscriber`.
+> **Status:** v0.9 requires on-device recognition by default and fixes
+> use-after-free bugs in the async and live-recognition bridges. v0.8 added
+> the Tier-1 `async` feature; v0.7 audited the classic `SFSpeech*`
+> recognition surface and covers the macOS 26 analyzer, asset-inventory, and
+> custom language-model authoring APIs alongside `DictationTranscriber`.
+
+```toml
+[dependencies]
+speech = "0.9"
+```
+
+## Requirements
+
+macOS 13 or later. Custom language models need macOS 14. The macOS 26
+analyzer family (`SpeechAnalyzer`, `SpeechTranscriber`, `SpeechDetector`,
+`AssetInventory`) and `DictationTranscriber` need macOS 26 at run time and a
+build with the macOS 26 SDK; otherwise those calls return
+`SpeechError::RecognizerUnavailable`.
 
 ## Async API
 
@@ -14,7 +28,7 @@ Speech.framework's callback-handler and `async throws` APIs:
 
 ```toml
 [dependencies]
-speech = { version = "0.8", features = ["async"] }
+speech = { version = "0.9", features = ["async"] }
 ```
 
 ```rust,no_run
@@ -27,8 +41,11 @@ let status = AsyncSpeechRecognizer::request_authorization().await?;
 println!("status: {status:?}");
 
 // 2. Recognize a URL file (one-shot, resolves with final result)
-use speech::{recognizer::SpeechRecognizer, request::UrlRecognitionRequest};
-let recognizer = SpeechRecognizer::new();
+use speech::{
+    recognizer::SpeechRecognizer,
+    request::{CallbackQueue, UrlRecognitionRequest},
+};
+let recognizer = SpeechRecognizer::new().with_callback_queue(CallbackQueue::background());
 let request = UrlRecognitionRequest::new("audio.m4a");
 let result = AsyncSpeechRecognizer::recognize_url(&recognizer, &request)?.await?;
 println!("{}", result.best_transcription.formatted_string);
@@ -97,7 +114,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Authorization
 
-`SFSpeechRecognizer` requires `NSSpeechRecognitionUsageDescription` in your app's `Info.plist` plus an authorization request. CLI binaries without a proper bundle typically get `Denied`; the smoke example exits cleanly when authorization is unavailable.
+`SFSpeechRecognizer` requires `NSSpeechRecognitionUsageDescription` in your app's `Info.plist` plus an authorization request. A command-line binary is authorized through the app that launched it (for example your terminal); if that app has no speech-recognition permission the status is `Denied` or `NotDetermined`, and the smoke examples exit cleanly. `LiveRecognition` and `start_microphone_task` also record from the microphone, which needs `NSMicrophoneUsageDescription` (or microphone permission for the launching app).
+
+## Callback queues
+
+Result handlers and task delegate events run on the recognizer's callback queue, which defaults to `CallbackQueue::Main`. A program whose main thread doesn't run the main run loop (most command-line tools, and `cargo test`) never services that queue, so recognition never completes and the blocking calls time out. Use `CallbackQueue::background()` or `CallbackQueue::named(..)` there. `LiveRecognition` always delivers on the main queue.
 
 ## Privacy: on-device by default
 

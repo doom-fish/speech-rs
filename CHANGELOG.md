@@ -1,5 +1,87 @@
 # Changelog
 
+All notable changes to `speech` are documented here.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.9.0] - Unreleased
+
+### Security
+
+- `AsyncSpeechRecognizer::recognize_url`, `AsyncSpeechAnalyzer::analyze_in_path`
+  and `AsyncSpeechLanguageModel::prepare_custom_language_model` no longer read
+  freed memory. The Swift thunks read the path, locale and JSON strings inside
+  `Task.detached`, after Rust had freed them: a heap use-after-free on every
+  call. They now copy every input before the call returns.
+- `LiveRecognition` no longer frees its callback context while a callback can
+  still arrive. Stopping released the session, and with it the context, before
+  the cancellation callback was delivered. The context is now a doom-fish-utils
+  `CallbackContext`; the Swift session holds a reference until its handler has
+  delivered its last update, and dropping `LiveRecognition` deactivates the
+  context first.
+- **Breaking:** recognition is on-device by default.
+  `RecognitionRequestOptions::default()` left `requiresOnDeviceRecognition`
+  unset, so audio could be sent to Apple's servers. Every `SFSpeechRecognizer`
+  path now requires on-device recognition unless you call
+  `with_requires_on_device_recognition(false)`.
+
+### Fixed
+
+- `RecognizeUrlFuture` resolves with the final result. The first partial result
+  used up its one-shot guard (partial results are on by default), so the future
+  never completed.
+- The global live-session table is guarded by a lock, and `end_audio`, `cancel`
+  and stop are serialized per session.
+- `AssetInstallationRequest::download_and_install` no longer cancels the
+  download after 120 s.
+- Custom-model recognition (`sp_recognize_url_with_custom_model`) returns
+  `SP_TIMED_OUT` on timeout instead of success with an empty transcript.
+- `start_audio_buffer_task` checks speech authorization, like the other task
+  starters.
+- `LiveRecognition::start` checks speech authorization before it opens the
+  microphone, and returns an error instead of raising an Objective-C exception
+  when there is no audio input.
+- `start_microphone_task` taps the input with the hardware format instead of
+  the request's 16 kHz native format, which AVAudioEngine rejects with an
+  Objective-C exception, and cancels its task if the audio engine fails to
+  start.
+- Errors from the async API, the task starters and `LiveRecognition::start` keep
+  their kind (`NotAuthorized`, `AudioLoadFailed`, `RecognizerUnavailable`,
+  `TimedOut`, `Framework`) instead of always being `RecognitionFailed` or
+  `RecognizerUnavailable`. The async URL path now also checks that the file
+  exists and that recognition is authorized.
+- Synchronous detailed recognition keeps only the first final result or error,
+  so a later callback can no longer race the reader.
+- COVERAGE lists `AnalyzerInput` as a gap (it can be built, but nothing accepts
+  it) and `SpeechAnalyzer` as whole-file only.
+- README: corrected the command-line authorization claim, and documented the
+  minimum OS versions, microphone permission and the main-queue callback
+  default.
+
+### Changed
+
+- **Breaking:** `RecognitionRequestOptions::requires_on_device_recognition`
+  returns `bool` instead of `Option<bool>`.
+- **Breaking:** `AssetInstallationRequest::download_and_install` takes an
+  `Option<Duration>`. `None` waits until the download finishes. On timeout it
+  returns `SpeechError::TimedOut` and the download keeps running; a later call
+  joins it.
+- **Breaking (raw FFI):** the async callbacks take a status code,
+  `sp_live_recognition_start` takes a retain callback and an out-status, the
+  task starters take an out-status, and
+  `sp_asset_installation_request_download_and_install` takes a timeout.
+- `rust-version` is now 1.82 (was 1.76), and `doom-fish-utils` 0.4.1 is
+  required.
+
+### Removed
+
+- **Breaking:** the `recognize_url` feature, which gated nothing.
+
+## [0.8.7] - 2026-06-06
+
+- Fixed use-after-free races in the task-delegate, live-recognition and availability-delegate callback contexts, and pinned the FFI struct layout with compile-time and cross-language checks.
+
 ## [0.8.6] - 2026-05-20
 
 - Migrated local `take_string` body to call `doom_fish_utils::ffi_string::take_owned_cstring_c`. Centralises the duplicated FFI take-string pattern fleet-wide. No public API change.
@@ -67,6 +149,7 @@
 - `tests/async_api_tests.rs` — happy path + four error-path tests using
   `pollster::block_on`
 
+## [0.7.1] - 2026-05-17
 
 ### Added
 
