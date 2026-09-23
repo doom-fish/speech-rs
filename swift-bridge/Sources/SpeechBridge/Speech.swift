@@ -590,10 +590,6 @@ public func sp_recognize_url_with_custom_model(
     _ outTranscript: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>,
     _ outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
 ) -> Int32 {
-    if #unavailable(macOS 14.0) {
-        outErrorMessage?.pointee = ffiString("custom language model requires macOS 14+")
-        return SP_RECOGNIZER_UNAVAILABLE
-    }
     if #available(macOS 14.0, *) {
         let audio = String(cString: audioPath)
         let lmPath = String(cString: languageModelPath)
@@ -626,31 +622,36 @@ public func sp_recognize_url_with_custom_model(
         request.customizedLanguageModel = lmConfig
 
         let sem = DispatchSemaphore(value: 0)
+        let gate = SPXFinalResultGate()
         var transcript: String? = nil
         var failure: String? = nil
         let task = recognizer.recognitionTask(with: request) { result, error in
+            guard
+                gate.admits(
+                    hasResult: result != nil, isFinal: result?.isFinal ?? false,
+                    hasError: error != nil)
+            else { return }
             if let error = error {
                 failure = error.localizedDescription
-                sem.signal()
-                return
-            }
-            guard let r = result else { return }
-            if r.isFinal {
+            } else if let r = result {
                 transcript = r.bestTranscription.formattedString
-                sem.signal()
+            } else {
+                failure = "recognition produced no result"
             }
+            sem.signal()
         }
-        _ = sem.wait(timeout: .now() + 120)
-        task.cancel()
-        if let f = failure {
-            outErrorMessage?.pointee = ffiString("recognition failed: \(f)")
-            return SP_AUDIO_LOAD_FAILED
+        if sem.wait(timeout: .now() + 120) == .timedOut {
+            task.cancel()
+            outErrorMessage?.pointee = ffiString("recognition timed out after 120s")
+            return SP_TIMED_OUT
         }
-        if let t = transcript {
-            outTranscript.pointee = ffiString(t)
-            return SP_OK
+        guard let t = transcript else {
+            outErrorMessage?.pointee = ffiString("recognition failed: \(failure ?? "no result")")
+            return SP_RECOGNITION_FAILED
         }
-        outTranscript.pointee = ffiString("")
+        outTranscript.pointee = ffiString(t)
+        return SP_OK
     }
-    return SP_OK
+    outErrorMessage?.pointee = ffiString("custom language model requires macOS 14+")
+    return SP_RECOGNIZER_UNAVAILABLE
 }
