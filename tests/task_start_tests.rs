@@ -2,7 +2,8 @@ use speech::prelude::*;
 
 #[test]
 fn a_missing_audio_file_is_reported_as_an_audio_load_failure() {
-    let recognizer = SpeechRecognizer::with_locale("en-US");
+    let recognizer =
+        SpeechRecognizer::with_locale("en-US").expect("en-US is a valid locale identifier");
     let request = UrlRecognitionRequest::new("/nonexistent/speech-rs-task-start.m4a");
     let result = recognizer.start_url_task(&request, |_| {});
     let error = result.err();
@@ -14,8 +15,9 @@ fn a_missing_audio_file_is_reported_as_an_audio_load_failure() {
 
 #[test]
 fn an_audio_buffer_task_requires_authorization() {
-    let recognizer =
-        SpeechRecognizer::with_locale("en-US").with_callback_queue(CallbackQueue::background());
+    let recognizer = SpeechRecognizer::with_locale("en-US")
+        .expect("en-US is a valid locale identifier")
+        .with_callback_queue(CallbackQueue::background());
     let result = recognizer.start_audio_buffer_task(&AudioBufferRecognitionRequest::new(), |_| {});
     let error = result.err();
     if SpeechRecognizer::authorization_status().is_authorized() {

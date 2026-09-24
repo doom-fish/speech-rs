@@ -11,10 +11,10 @@
 
 #[cfg(feature = "async")]
 mod async_tests {
+    use speech::analyzer::{SpeechAnalyzer, SpeechTranscriber, SpeechTranscriberPreset};
     use speech::async_api::{
         AsyncSpeechAnalyzer, AsyncSpeechLanguageModel, AsyncSpeechRecognizer,
     };
-    use speech::analyzer::{SpeechAnalyzer, SpeechTranscriber, SpeechTranscriberPreset};
     use speech::error::SpeechError;
     use speech::language_model::LanguageModelConfiguration;
     use speech::recognizer::SpeechRecognizer;
@@ -165,7 +165,8 @@ mod async_tests {
         let pending = (0..ROUNDS)
             .map(|round| {
                 let path = missing_path("recognize", round);
-                let recognizer = SpeechRecognizer::with_locale("en-US");
+                let recognizer = SpeechRecognizer::with_locale("en-US")
+                    .expect("en-US is a valid locale identifier");
                 let request = UrlRecognitionRequest::new(&path).with_options(
                     RecognitionRequestOptions::new().with_contextual_strings(["doom fish"]),
                 );
@@ -222,8 +223,10 @@ mod async_tests {
             println!("skipping: speech recognition is not authorized for this process");
             return;
         }
-        let recognizer = SpeechRecognizer::with_locale("en-US");
-        if !recognizer.is_available() || !recognizer.supports_on_device_recognition().unwrap_or(false)
+        let recognizer =
+            SpeechRecognizer::with_locale("en-US").expect("en-US is a valid locale identifier");
+        if !recognizer.is_available()
+            || !recognizer.supports_on_device_recognition().unwrap_or(false)
         {
             println!("skipping: on-device en-US recognition is unavailable");
             return;

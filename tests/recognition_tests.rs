@@ -18,9 +18,9 @@ fn on_device_en_us_recognizer() -> Option<SpeechRecognizer> {
         println!("skipping: speech recognition is not authorized for this process");
         return None;
     }
-    let recognizer = SpeechRecognizer::with_locale("en-US");
-    if !recognizer.is_available() || !recognizer.supports_on_device_recognition().unwrap_or(false)
-    {
+    let recognizer =
+        SpeechRecognizer::with_locale("en-US").expect("en-US is a valid locale identifier");
+    if !recognizer.is_available() || !recognizer.supports_on_device_recognition().unwrap_or(false) {
         println!("skipping: on-device en-US recognition is unavailable");
         return None;
     }

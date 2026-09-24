@@ -78,6 +78,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CallbackQueue::default()`, `background()` and `named()` are serial, a
   background queue with zero concurrency is rejected with `InvalidArgument`,
   and the bridge also uses a serial queue when a payload names none.
+- **Breaking:** `SpeechRecognizer::with_locale` returns
+  `Result<Self, SpeechError>` and reports an interior NUL as
+  `InvalidArgument` instead of panicking; `with_locale_checked` is removed.
 - `rust-version` is now 1.82 (was 1.76), and `doom-fish-utils` 0.4.1 is
   required.
 

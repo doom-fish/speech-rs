@@ -15,7 +15,8 @@ use crate::error::{AuthorizationStatus, SpeechError};
 use crate::ffi;
 use crate::language_model::LanguageModelConfiguration;
 use crate::private::{
-    cstring_from_path, error_from_status, json_cstring, parse_json_ptr, take_string,
+    cstring_from_path, cstring_from_str, error_from_status, json_cstring, parse_json_ptr,
+    take_string,
 };
 use crate::request::{
     AudioBufferRecognitionRequest, CallbackQueue, QueuePayload, RecognitionRequestOptions,
@@ -109,21 +110,13 @@ impl SpeechRecognizer {
     /// Construct using the recognizer for `locale_id` (e.g. `"en-US"`,
     /// `"sv-SE"`).
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `locale_id` contains an interior NUL byte. Use
-    /// [`Self::with_locale_checked`] for the fallible form.
-    #[must_use]
-    pub fn with_locale(locale_id: &str) -> Self {
-        Self::with_locale_checked(locale_id).expect("locale must not contain NUL bytes")
-    }
-
-    /// Same as [`Self::with_locale`] but returns `None` when `locale_id`
-    /// has interior NUL bytes.
-    #[must_use]
-    pub fn with_locale_checked(locale_id: &str) -> Option<Self> {
-        Some(Self {
-            locale_id: Some(CString::new(locale_id).ok()?),
+    /// Returns [`SpeechError::InvalidArgument`] if `locale_id` contains an
+    /// interior NUL byte.
+    pub fn with_locale(locale_id: &str) -> Result<Self, SpeechError> {
+        Ok(Self {
+            locale_id: Some(cstring_from_str(locale_id, "locale identifier")?),
             default_task_hint: TaskHint::Unspecified,
             callback_queue: CallbackQueue::default(),
         })
@@ -531,7 +524,8 @@ mod tests {
 
     #[test]
     fn recognizers_deliver_callbacks_on_a_serial_background_queue_by_default() {
-        let json = recognizer_json(&SpeechRecognizer::new()).expect("the default recognizer encodes");
+        let json =
+            recognizer_json(&SpeechRecognizer::new()).expect("the default recognizer encodes");
         assert!(
             json.contains(
                 r#""queue":{"kind":"background","name":null,"maxConcurrentOperationCount":1}"#
@@ -555,5 +549,14 @@ mod tests {
             recognizer_json(&recognizer),
             Err(SpeechError::InvalidArgument(_))
         ));
+    }
+
+    #[test]
+    fn a_locale_with_an_interior_nul_is_rejected() {
+        assert!(matches!(
+            SpeechRecognizer::with_locale("en\0US"),
+            Err(SpeechError::InvalidArgument(_))
+        ));
+        assert!(SpeechRecognizer::with_locale("en-US").is_ok());
     }
 }
