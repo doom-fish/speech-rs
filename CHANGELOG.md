@@ -61,6 +61,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only.
 - README: corrected the command-line authorization claim, and documented the
   minimum OS versions, microphone permission and callback queues.
+- `build.rs` no longer adds the toolchain's Swift 5.5 back-deployment
+  directory (`usr/lib/swift-5.5/macosx`) to the rpath of the crate's tests and
+  examples. The rpath pointed into Xcode, so it never made back-deployment
+  work on other machines; `libswift_Concurrency` resolves through
+  `/usr/lib/swift`.
 
 ### Changed
 
