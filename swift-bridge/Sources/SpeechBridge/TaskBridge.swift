@@ -423,7 +423,7 @@ public func sp_task_cancel(_ token: UnsafeMutableRawPointer?) {
 @_cdecl("sp_task_state")
 public func sp_task_state(_ token: UnsafeMutableRawPointer?) -> Int32 {
   guard let taskBox = try? spxTaskBox(token) else { return -1 }
-  return Int32(taskBox.task.state.rawValue)
+  return Int32(clamping: taskBox.task.state.rawValue)
 }
 
 @_cdecl("sp_task_is_finishing")
@@ -501,6 +501,9 @@ private func spxMakeFloatBuffer(
       "sample count must be a non-negative multiple of channel count")
   }
   let frameCount = sampleCount / channels
+  guard let frameCapacity = AVAudioFrameCount(exactly: frameCount) else {
+    throw SPXBridgeError.invalidArgument("too many samples for one audio buffer")
+  }
   guard
     let format = AVAudioFormat(
       commonFormat: .pcmFormatFloat32,
@@ -508,13 +511,13 @@ private func spxMakeFloatBuffer(
       channels: AVAudioChannelCount(channels),
       interleaved: false
     ),
-    let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCount)),
+    let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCapacity),
     let channelData = buffer.floatChannelData
   else {
     throw SPXBridgeError.invalidArgument("unable to allocate AVAudioPCMBuffer for Float32 samples")
   }
 
-  buffer.frameLength = AVAudioFrameCount(frameCount)
+  buffer.frameLength = frameCapacity
   let input = UnsafeBufferPointer(start: samples, count: sampleCount)
   guard let baseAddress = input.baseAddress else { return buffer }
 
@@ -543,6 +546,9 @@ private func spxMakeInt16Buffer(
       "sample count must be a non-negative multiple of channel count")
   }
   let frameCount = sampleCount / channels
+  guard let frameCapacity = AVAudioFrameCount(exactly: frameCount) else {
+    throw SPXBridgeError.invalidArgument("too many samples for one audio buffer")
+  }
   guard
     let format = AVAudioFormat(
       commonFormat: .pcmFormatInt16,
@@ -550,13 +556,13 @@ private func spxMakeInt16Buffer(
       channels: AVAudioChannelCount(channels),
       interleaved: false
     ),
-    let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCount)),
+    let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCapacity),
     let channelData = buffer.int16ChannelData
   else {
     throw SPXBridgeError.invalidArgument("unable to allocate AVAudioPCMBuffer for Int16 samples")
   }
 
-  buffer.frameLength = AVAudioFrameCount(frameCount)
+  buffer.frameLength = frameCapacity
   let input = UnsafeBufferPointer(start: samples, count: sampleCount)
   guard let baseAddress = input.baseAddress else { return buffer }
 

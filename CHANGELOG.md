@@ -36,6 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `finish`, `cancel`, `end_audio` and drop are serialized per recognition
   task too, so concurrent calls on these `Sync` tasks no longer race on the
   microphone task's audio engine.
+- Appending PCM samples returns `InvalidArgument` when one buffer would hold
+  more than `u32::MAX` frames instead of trapping in the bridge, and the task
+  state is read without a trapping integer conversion.
 - `AssetInstallationRequest::download_and_install` no longer cancels the
   download after 120 s.
 - `start_audio_buffer_task` checks speech authorization, like the other task
