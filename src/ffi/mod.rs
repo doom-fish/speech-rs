@@ -8,7 +8,10 @@ extern "C" {
     pub fn sp_string_free(s: *mut c_char);
 
     pub fn sp_authorization_status() -> i32;
-    pub fn sp_request_authorization() -> i32;
+    pub fn sp_request_authorization(
+        out_status: *mut i32,
+        out_error_message: *mut *mut c_char,
+    ) -> i32;
 
     pub fn sp_recognizer_is_available(locale_id: *const c_char) -> bool;
     pub fn sp_recognizer_default_locale_identifier() -> *mut c_char;

@@ -37,9 +37,8 @@ private func ffiString(_ s: String) -> UnsafeMutablePointer<CChar>? {
 
 /// Returns the current authorisation status:
 ///   0 = not determined, 1 = denied, 2 = restricted, 3 = authorized.
-@_cdecl("sp_authorization_status")
-public func sp_authorization_status() -> Int32 {
-    switch SFSpeechRecognizer.authorizationStatus() {
+private func spAuthorizationCode(_ status: SFSpeechRecognizerAuthorizationStatus) -> Int32 {
+    switch status {
     case .notDetermined: return 0
     case .denied: return 1
     case .restricted: return 2
@@ -48,25 +47,34 @@ public func sp_authorization_status() -> Int32 {
     }
 }
 
+@_cdecl("sp_authorization_status")
+public func sp_authorization_status() -> Int32 {
+    spAuthorizationCode(SFSpeechRecognizer.authorizationStatus())
+}
+
 /// Synchronously requests authorisation (blocks until the user responds or
-/// the system grants automatically). Returns the resulting status code.
+/// the system grants automatically) and writes the resulting status code to
+/// `outStatus`. Returns SP_TIMED_OUT if there is no answer within 30s.
 @_cdecl("sp_request_authorization")
-public func sp_request_authorization() -> Int32 {
+public func sp_request_authorization(
+    _ outStatus: UnsafeMutablePointer<Int32>?,
+    _ outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
+) -> Int32 {
     let semaphore = DispatchSemaphore(value: 0)
-    var result: SFSpeechRecognizerAuthorizationStatus = .notDetermined
+    let answer = SPXAsyncBridgeState<Int32>()
     SFSpeechRecognizer.requestAuthorization { status in
-        result = status
+        answer.store(.success(spAuthorizationCode(status)))
         semaphore.signal()
     }
-    // 30s timeout — if the system doesn't respond, return what we have.
-    _ = semaphore.wait(timeout: .now() + .seconds(30))
-    switch result {
-    case .notDetermined: return 0
-    case .denied: return 1
-    case .restricted: return 2
-    case .authorized: return 3
-    @unknown default: return -1
+    guard semaphore.wait(timeout: .now() + .seconds(30)) == .success,
+        case .success(let code)? = answer.load()
+    else {
+        outErrorMessage?.pointee = ffiString(
+            "the authorization request got no answer within 30s and is still pending")
+        return SP_TIMED_OUT
     }
+    outStatus?.pointee = code
+    return SP_OK
 }
 
 // MARK: - Recognizer availability

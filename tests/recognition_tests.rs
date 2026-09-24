@@ -46,3 +46,13 @@ fn recognize_in_path_completes_on_the_default_callback_queue() {
         result.transcript
     );
 }
+
+#[test]
+fn request_authorization_reports_an_already_determined_status() {
+    let current = SpeechRecognizer::authorization_status();
+    if current == AuthorizationStatus::NotDetermined {
+        println!("skipping: requesting authorization now would show a prompt");
+        return;
+    }
+    assert_eq!(SpeechRecognizer::request_authorization(), Ok(current));
+}

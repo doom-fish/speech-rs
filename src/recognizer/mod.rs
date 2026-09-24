@@ -129,9 +129,15 @@ impl SpeechRecognizer {
     }
 
     /// Synchronously prompt the user for authorization.
-    #[must_use]
-    pub fn request_authorization() -> AuthorizationStatus {
-        AuthorizationStatus::from_raw(unsafe { ffi::sp_request_authorization() })
+    pub fn request_authorization() -> Result<AuthorizationStatus, SpeechError> {
+        let mut raw = 0;
+        let mut err_msg: *mut c_char = ptr::null_mut();
+        let status = unsafe { ffi::sp_request_authorization(&raw mut raw, &raw mut err_msg) };
+        if status == ffi::status::OK {
+            Ok(AuthorizationStatus::from_raw(raw))
+        } else {
+            Err(unsafe { error_from_status(status, err_msg) })
+        }
     }
 
     /// Returns the set of locales supported by `SFSpeechRecognizer`.
@@ -464,7 +470,6 @@ impl SpeechRecognizer {
             "recognizer configuration",
         )
     }
-
 }
 
 fn simple_result_from_detailed(detailed: &DetailedRecognitionResult) -> RecognitionResult {

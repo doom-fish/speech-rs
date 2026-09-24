@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let status = SpeechRecognizer::authorization_status();
     println!("authorization status: {status:?}");
     if !status.is_authorized() {
-        let new_status = SpeechRecognizer::request_authorization();
+        let new_status = SpeechRecognizer::request_authorization()?;
         println!("after request: {new_status:?}");
         if !new_status.is_authorized() {
             eprintln!(

@@ -65,7 +65,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Option<Duration>`. `None` waits until the download finishes. On timeout it
   returns `SpeechError::TimedOut` and the download keeps running; a later call
   joins it.
-- **Breaking (raw FFI):** the async callbacks take a status code,
+- **Breaking (raw FFI):** `sp_request_authorization` writes the status to an
+  out-parameter and returns a bridge status, the async callbacks take a
+  status code,
   `sp_live_recognition_start` takes the recognizer JSON, a retain callback and
   an out-status, the
   task starters take an out-status,
@@ -93,6 +95,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   context is always released. Dropping `PrepareLanguageModelFuture` stops a
   preparation that hasn't reached the framework yet; `SFSpeechLanguageModel`
   has no cancellation API after that.
+- **Breaking:** `SpeechRecognizer::request_authorization` returns
+  `Result<AuthorizationStatus, SpeechError>`. If there is no answer within
+  30 s it returns `SpeechError::TimedOut` instead of reporting the placeholder
+  `NotDetermined`, and the answer is stored under a lock instead of in a
+  variable the waiter could read while the handler wrote it.
 - `rust-version` is now 1.82 (was 1.76), and `doom-fish-utils` 0.4.1 is
   required.
 

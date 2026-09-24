@@ -68,7 +68,7 @@ use speech::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !SpeechRecognizer::authorization_status().is_authorized() {
-        let status = SpeechRecognizer::request_authorization();
+        let status = SpeechRecognizer::request_authorization()?;
         if !status.is_authorized() {
             eprintln!("speech authorization denied: {status:?}");
             return Ok(());
