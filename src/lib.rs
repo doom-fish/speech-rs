@@ -36,7 +36,7 @@ pub mod transcription;
 pub mod live;
 
 pub use analyzer::{
-    AnalysisContext, AnalyzerInput, AudioTimeRange, ContextualStringsTag,
+    AnalysisContext, AudioTimeRange, ContextualStringsTag,
     LocaleDependentSpeechModule, SpeechAnalyzer, SpeechAnalyzerModelRetention,
     SpeechAnalyzerModuleOutput, SpeechAnalyzerModuleResults, SpeechAnalyzerOptions,
     SpeechAnalyzerPriority, SpeechAttributedText, SpeechAttributeSpan, SpeechAttributes,
@@ -90,7 +90,7 @@ pub use transcription::{
 /// Common imports.
 pub mod prelude {
     pub use crate::analyzer::{
-        AnalysisContext, AnalyzerInput, AudioTimeRange, ContextualStringsTag,
+        AnalysisContext, AudioTimeRange, ContextualStringsTag,
         LocaleDependentSpeechModule, SpeechAnalyzer, SpeechAnalyzerModelRetention,
         SpeechAnalyzerModuleOutput, SpeechAnalyzerModuleResults, SpeechAnalyzerOptions,
         SpeechAnalyzerPriority, SpeechAttributedText, SpeechAttributeSpan, SpeechAttributes,

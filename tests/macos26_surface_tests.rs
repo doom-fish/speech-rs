@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::ptr::NonNull;
 
 use speech::prelude::*;
 
@@ -128,12 +127,7 @@ fn speech_transcription_result_decodes_attributed_text_and_time_ranges() {
 }
 
 #[test]
-fn analyzer_input_and_error_code_helpers_cover_macos26_surface() {
-    let raw = NonNull::<u8>::dangling().cast();
-    let input = unsafe { AnalyzerInput::from_audio_pcm_buffer_raw_with_start_time(raw, 1.25) };
-    assert_eq!(input.raw_buffer(), raw);
-    assert_eq!(input.buffer_start_time_seconds(), Some(1.25));
-
+fn error_code_helpers_cover_macos26_surface() {
     assert_eq!(
         SpeechFrameworkErrorCode::from_domain_code_and_message(
             SPEECH_ERROR_DOMAIN,

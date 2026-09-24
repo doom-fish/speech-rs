@@ -42,7 +42,7 @@ This audit tracks the public Speech.framework surface explicitly requested for t
 | `SpeechDetector` | ✅ implemented | `src/analyzer.rs`, `AnalyzerBridge.swift` |
 | `AssetInventory` / `AssetInstallationRequest` | ✅ implemented | `src/asset_inventory.rs`, `swift-bridge/Sources/SpeechBridge/AssetInventoryBridge.swift` |
 | `AnalysisContext`, `SpeechModels` | ✅ implemented | `src/analyzer.rs`, `AnalyzerBridge.swift` |
-| `AnalyzerInput` | ⚠️ constructible only | `src/analyzer.rs`; no analyzer API accepts it, because live `SpeechAnalyzer` input is not implemented |
+| `AnalyzerInput` | ❌ not wrapped | live `SpeechAnalyzer` input is not implemented |
 | `SpeechAttributes` helpers | ✅ implemented | `SpeechAttributedText`, `SpeechAttributeSpan`, `SpeechConfidenceAttribute`, `SpeechTimeRangeAttribute` in `src/analyzer.rs`, encoded by `AnalyzerBridge.swift` |
 
 ## Custom language-model authoring

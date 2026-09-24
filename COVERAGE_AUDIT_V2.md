@@ -90,7 +90,7 @@ Each row is one top-level symbol, so a row can be VERIFIED while some of its mem
 ## 🔴 GAPS
 | Symbol | Kind | Header | Gap |
 | --- | --- | --- | --- |
-| `AnalyzerInput` | struct | `Speech.swiftinterface` | `AnalyzerInput::{from_audio_pcm_buffer_raw,from_audio_pcm_buffer_raw_with_start_time}` builds a value, but no API accepts it: the analyzer's streaming input (`init(inputSequence:modules:options:)`, `start(inputSequence:)`, `analyzeSequence(_:)`) is not bridged, so live `SpeechAnalyzer` input is not possible. |
+| `AnalyzerInput` | struct | `Speech.swiftinterface` | Not wrapped: the analyzer's streaming input (`init(inputSequence:modules:options:)`, `start(inputSequence:)`, `analyzeSequence(_:)`) is not bridged, so live `SpeechAnalyzer` input is not possible. |
 
 ## ⏭️ EXEMPT
 | Symbol | Kind | Header | Reason | SDK attribute |

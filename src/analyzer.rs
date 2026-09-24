@@ -5,12 +5,11 @@
     clippy::struct_field_names
 )]
 
-use core::ffi::c_void;
 use std::collections::BTreeMap;
 use std::ffi::CString;
 use std::ops::Range;
 use std::path::Path;
-use std::ptr::{self, NonNull};
+use std::ptr;
 
 use serde::{Deserialize, Serialize};
 
@@ -1168,52 +1167,6 @@ pub struct SpeechAnalyzerModuleOutput {
 pub enum SpeechAnalyzerModuleResults {
     SpeechTranscriber(Vec<SpeechTranscriptionResult>),
     SpeechDetector(Vec<SpeechDetectionResult>),
-}
-
-/// Safe wrapper for `AnalyzerInput` raw `AVAudioPCMBuffer *` values.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct AnalyzerInput {
-    buffer: NonNull<c_void>,
-    buffer_start_time_seconds: Option<f64>,
-}
-
-unsafe impl Send for AnalyzerInput {}
-
-impl AnalyzerInput {
-    /// # Safety
-    ///
-    /// `buffer` must be a valid `AVAudioPCMBuffer *` allocated by `AVFoundation`.
-    #[must_use]
-    pub const unsafe fn from_audio_pcm_buffer_raw(buffer: NonNull<c_void>) -> Self {
-        Self {
-            buffer,
-            buffer_start_time_seconds: None,
-        }
-    }
-
-    /// # Safety
-    ///
-    /// `buffer` must be a valid `AVAudioPCMBuffer *` allocated by `AVFoundation`.
-    #[must_use]
-    pub const unsafe fn from_audio_pcm_buffer_raw_with_start_time(
-        buffer: NonNull<c_void>,
-        buffer_start_time_seconds: f64,
-    ) -> Self {
-        Self {
-            buffer,
-            buffer_start_time_seconds: Some(buffer_start_time_seconds),
-        }
-    }
-
-    #[must_use]
-    pub const fn raw_buffer(self) -> NonNull<c_void> {
-        self.buffer
-    }
-
-    #[must_use]
-    pub const fn buffer_start_time_seconds(self) -> Option<f64> {
-        self.buffer_start_time_seconds
-    }
 }
 
 /// `SpeechModels` lifecycle helpers.

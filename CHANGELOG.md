@@ -51,8 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exists and that recognition is authorized.
 - Synchronous detailed recognition keeps only the first final result or error,
   so a later callback can no longer race the reader.
-- COVERAGE lists `AnalyzerInput` as a gap (it can be built, but nothing accepts
-  it) and `SpeechAnalyzer` as whole-file only.
+- COVERAGE lists `AnalyzerInput` as a gap and `SpeechAnalyzer` as whole-file
+  only.
 - README: corrected the command-line authorization claim, and documented the
   minimum OS versions, microphone permission and the main-queue callback
   default.
@@ -113,6 +113,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only covered those structs. The safe API never called them;
   `recognize_request`, `recognize_in_path_with_metadata` and
   `recognize_in_path_with_custom_model` cover the same ground.
+- **Breaking:** `AnalyzerInput`. No API accepted it, because live
+  `SpeechAnalyzer` input isn't bridged, and its `unsafe impl Send` wrapped an
+  unowned pointer to an `AVAudioPCMBuffer`, which the SDK doesn't mark as
+  Sendable.
 
 ## [0.8.7] - 2026-06-06
 
