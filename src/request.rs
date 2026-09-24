@@ -42,9 +42,8 @@ impl TaskHint {
 }
 
 /// Controls which `NSOperationQueue` Apple's callbacks run on.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallbackQueue {
-    #[default]
     Main,
     Background {
         name: Option<String>,
@@ -52,12 +51,18 @@ pub enum CallbackQueue {
     },
 }
 
+impl Default for CallbackQueue {
+    fn default() -> Self {
+        Self::background()
+    }
+}
+
 impl CallbackQueue {
     #[must_use]
     pub fn background() -> Self {
         Self::Background {
             name: None,
-            max_concurrent_operation_count: None,
+            max_concurrent_operation_count: Some(1),
         }
     }
 
@@ -65,7 +70,7 @@ impl CallbackQueue {
     pub fn named(name: impl Into<String>) -> Self {
         Self::Background {
             name: Some(name.into()),
-            max_concurrent_operation_count: None,
+            max_concurrent_operation_count: Some(1),
         }
     }
 
@@ -446,7 +451,10 @@ impl From<AudioFormatPayload> for AudioFormat {
 
 #[cfg(test)]
 mod tests {
-    use super::{AudioBufferRecognitionRequest, RecognitionRequestOptions, UrlRecognitionRequest};
+    use super::{
+        AudioBufferRecognitionRequest, CallbackQueue, RecognitionRequestOptions,
+        UrlRecognitionRequest,
+    };
 
     fn payload_json(options: &RecognitionRequestOptions) -> String {
         options
@@ -479,5 +487,22 @@ mod tests {
             &RecognitionRequestOptions::new().with_requires_on_device_recognition(false)
         )
         .contains(r#""requiresOnDeviceRecognition":false"#));
+    }
+
+    #[test]
+    fn callbacks_default_to_a_dedicated_serial_queue() {
+        let serial = CallbackQueue::Background {
+            name: None,
+            max_concurrent_operation_count: Some(1),
+        };
+        assert_eq!(CallbackQueue::default(), serial);
+        assert_eq!(CallbackQueue::background(), serial);
+        assert_eq!(
+            CallbackQueue::named("speech"),
+            CallbackQueue::Background {
+                name: Some("speech".into()),
+                max_concurrent_operation_count: Some(1),
+            }
+        );
     }
 }

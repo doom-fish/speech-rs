@@ -245,23 +245,19 @@ func spxTaskHint(from rawValue: Int?) -> SFSpeechRecognitionTaskHint {
 }
 
 func spxMakeOperationQueue(from payload: SPXQueuePayload?) -> OperationQueue {
-  guard let payload else {
+  if payload?.kind == "main" {
     return OperationQueue.main
   }
-
-  switch payload.kind {
-  case "main":
-    return OperationQueue.main
-  case "background":
-    let queue = OperationQueue()
-    queue.name = payload.name
+  let queue = OperationQueue()
+  queue.name = payload?.name
+  if let payload, payload.kind == "background" {
     if let maxConcurrentOperationCount = payload.maxConcurrentOperationCount {
-      queue.maxConcurrentOperationCount = maxConcurrentOperationCount
+      queue.maxConcurrentOperationCount = max(maxConcurrentOperationCount, 1)
     }
-    return queue
-  default:
-    return OperationQueue.main
+  } else {
+    queue.maxConcurrentOperationCount = 1
   }
+  return queue
 }
 
 @available(macOS 14.0, *)
@@ -291,11 +287,10 @@ func spxMakeLanguageModelConfiguration(from payload: SPXLanguageModelConfigurati
 
 func spxApplyRecognizerPayload(_ payload: SPXRecognizerPayload?, to recognizer: SFSpeechRecognizer)
 {
-  guard let payload else { return }
-  if let defaultTaskHint = payload.defaultTaskHint {
+  if let defaultTaskHint = payload?.defaultTaskHint {
     recognizer.defaultTaskHint = spxTaskHint(from: defaultTaskHint)
   }
-  recognizer.queue = spxMakeOperationQueue(from: payload.queue)
+  recognizer.queue = spxMakeOperationQueue(from: payload?.queue)
 }
 
 func spxApplyRequestPayload(

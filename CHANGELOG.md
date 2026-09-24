@@ -71,6 +71,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `sp_live_recognition_start` takes a retain callback and an out-status, the
   task starters take an out-status, and
   `sp_asset_installation_request_download_and_install` takes a timeout.
+- **Breaking:** recognizer callbacks default to a dedicated serial background
+  queue instead of the main queue, so recognition completes in command-line
+  tools and under `cargo test`, where nothing services the main queue.
+  `CallbackQueue::Main` is still available as an explicit choice.
+  `CallbackQueue::default()`, `background()` and `named()` are serial, a
+  background queue with zero concurrency is rejected with `InvalidArgument`,
+  and the bridge also uses a serial queue when a payload names none.
 - `rust-version` is now 1.82 (was 1.76), and `doom-fish-utils` 0.4.1 is
   required.
 

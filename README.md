@@ -41,11 +41,8 @@ let status = AsyncSpeechRecognizer::request_authorization().await?;
 println!("status: {status:?}");
 
 // 2. Recognize a URL file (one-shot, resolves with final result)
-use speech::{
-    recognizer::SpeechRecognizer,
-    request::{CallbackQueue, UrlRecognitionRequest},
-};
-let recognizer = SpeechRecognizer::new().with_callback_queue(CallbackQueue::background());
+use speech::{recognizer::SpeechRecognizer, request::UrlRecognitionRequest};
+let recognizer = SpeechRecognizer::new();
 let request = UrlRecognitionRequest::new("audio.m4a");
 let result = AsyncSpeechRecognizer::recognize_url(&recognizer, &request)?.await?;
 println!("{}", result.best_transcription.formatted_string);
@@ -118,7 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Callback queues
 
-Result handlers and task delegate events run on the recognizer's callback queue, which defaults to `CallbackQueue::Main`. A program whose main thread doesn't run the main run loop (most command-line tools, and `cargo test`) never services that queue, so recognition never completes and the blocking calls time out. Use `CallbackQueue::background()` or `CallbackQueue::named(..)` there. `LiveRecognition` always delivers on the main queue.
+Result handlers and task delegate events run on the recognizer's callback queue. By default every recognition gets its own serial background queue (`CallbackQueue::default()`, the same as `CallbackQueue::background()`), so callbacks arrive in order and don't depend on the main run loop. `CallbackQueue::Main` is an explicit choice for apps that run the main run loop; in a program that doesn't (most command-line tools, and `cargo test`), main-queue callbacks never run, recognition never completes, and the blocking calls time out. `LiveRecognition` always delivers on the main queue.
 
 ## Privacy: on-device by default
 

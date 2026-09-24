@@ -18,7 +18,7 @@ mod async_tests {
     use speech::error::SpeechError;
     use speech::language_model::LanguageModelConfiguration;
     use speech::recognizer::SpeechRecognizer;
-    use speech::request::{CallbackQueue, RecognitionRequestOptions, UrlRecognitionRequest};
+    use speech::request::{RecognitionRequestOptions, UrlRecognitionRequest};
     use std::path::Path;
 
     // -----------------------------------------------------------------------
@@ -165,8 +165,7 @@ mod async_tests {
         let pending = (0..ROUNDS)
             .map(|round| {
                 let path = missing_path("recognize", round);
-                let recognizer = SpeechRecognizer::with_locale("en-US")
-                    .with_callback_queue(CallbackQueue::background());
+                let recognizer = SpeechRecognizer::with_locale("en-US");
                 let request = UrlRecognitionRequest::new(&path).with_options(
                     RecognitionRequestOptions::new().with_contextual_strings(["doom fish"]),
                 );
@@ -223,8 +222,7 @@ mod async_tests {
             println!("skipping: speech recognition is not authorized for this process");
             return;
         }
-        let recognizer =
-            SpeechRecognizer::with_locale("en-US").with_callback_queue(CallbackQueue::background());
+        let recognizer = SpeechRecognizer::with_locale("en-US");
         if !recognizer.is_available() || !recognizer.supports_on_device_recognition().unwrap_or(false)
         {
             println!("skipping: on-device en-US recognition is unavailable");

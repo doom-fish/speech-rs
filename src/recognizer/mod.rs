@@ -102,7 +102,7 @@ impl SpeechRecognizer {
         Self {
             locale_id: None,
             default_task_hint: TaskHint::Unspecified,
-            callback_queue: CallbackQueue::Main,
+            callback_queue: CallbackQueue::default(),
         }
     }
 
@@ -125,7 +125,7 @@ impl SpeechRecognizer {
         Some(Self {
             locale_id: Some(CString::new(locale_id).ok()?),
             default_task_hint: TaskHint::Unspecified,
-            callback_queue: CallbackQueue::Main,
+            callback_queue: CallbackQueue::default(),
         })
     }
 
@@ -452,6 +452,17 @@ impl SpeechRecognizer {
     }
 
     fn recognizer_json(&self) -> Result<CString, SpeechError> {
+        if matches!(
+            self.callback_queue,
+            CallbackQueue::Background {
+                max_concurrent_operation_count: Some(0),
+                ..
+            }
+        ) {
+            return Err(SpeechError::InvalidArgument(
+                "a background callback queue needs at least one concurrent operation".into(),
+            ));
+        }
         json_cstring(
             &RecognizerPayload {
                 default_task_hint: Some(self.default_task_hint.as_raw()),
@@ -503,5 +514,46 @@ fn legacy_metadata_from_detailed(metadata: &DetailedRecognitionMetadata) -> Reco
         average_pause_duration: metadata.average_pause_duration,
         speech_start_timestamp: metadata.speech_start_timestamp,
         speech_duration: metadata.speech_duration,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SpeechRecognizer;
+    use crate::error::SpeechError;
+    use crate::request::CallbackQueue;
+
+    fn recognizer_json(recognizer: &SpeechRecognizer) -> Result<String, SpeechError> {
+        recognizer
+            .recognizer_json()
+            .map(|json| json.into_string().expect("the JSON payload is UTF-8"))
+    }
+
+    #[test]
+    fn recognizers_deliver_callbacks_on_a_serial_background_queue_by_default() {
+        let json = recognizer_json(&SpeechRecognizer::new()).expect("the default recognizer encodes");
+        assert!(
+            json.contains(
+                r#""queue":{"kind":"background","name":null,"maxConcurrentOperationCount":1}"#
+            ),
+            "{json}"
+        );
+    }
+
+    #[test]
+    fn the_main_queue_is_an_explicit_choice() {
+        let recognizer = SpeechRecognizer::new().with_callback_queue(CallbackQueue::Main);
+        let json = recognizer_json(&recognizer).expect("a main-queue recognizer encodes");
+        assert!(json.contains(r#""queue":{"kind":"main""#), "{json}");
+    }
+
+    #[test]
+    fn a_background_queue_without_concurrency_is_rejected() {
+        let recognizer = SpeechRecognizer::new()
+            .with_callback_queue(CallbackQueue::background().with_max_concurrent_operations(0));
+        assert!(matches!(
+            recognizer_json(&recognizer),
+            Err(SpeechError::InvalidArgument(_))
+        ));
     }
 }
