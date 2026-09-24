@@ -16,23 +16,6 @@ func spxCString(_ string: String) -> UnsafeMutablePointer<CChar>? {
   string.withCString { strdup($0) }
 }
 
-/// Cross-language ABI check called from Rust's `tests/ffi_layout_tests.rs`.
-///
-/// Returns `true` only if the Swift `MemoryLayout` (size, stride and alignment)
-/// of the `#[repr(C)]` FFI structs matches the values pinned on the Rust side
-/// via the `const _: () = assert!(...)` checks in `src/ffi/mod.rs`. If the
-/// layouts ever drift apart this returns `false` and the Rust test fails,
-/// flagging a real ABI mismatch.
-@_cdecl("sp_verify_ffi_layout")
-public func sp_verify_ffi_layout() -> Bool {
-  return MemoryLayout<SPTranscriptionSegmentRaw>.size == 32
-    && MemoryLayout<SPTranscriptionSegmentRaw>.stride == 32
-    && MemoryLayout<SPTranscriptionSegmentRaw>.alignment == 8
-    && MemoryLayout<SPRecognitionMetadataRaw>.size == 40
-    && MemoryLayout<SPRecognitionMetadataRaw>.stride == 40
-    && MemoryLayout<SPRecognitionMetadataRaw>.alignment == 8
-}
-
 func spxRetain(_ object: some AnyObject) -> UnsafeMutableRawPointer {
   Unmanaged.passRetained(object).toOpaque()
 }

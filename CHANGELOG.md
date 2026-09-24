@@ -35,8 +35,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and stop are serialized per session.
 - `AssetInstallationRequest::download_and_install` no longer cancels the
   download after 120 s.
-- Custom-model recognition (`sp_recognize_url_with_custom_model`) returns
-  `SP_TIMED_OUT` on timeout instead of success with an empty transcript.
 - `start_audio_buffer_task` checks speech authorization, like the other task
   starters.
 - `LiveRecognition::start` checks speech authorization before it opens the
@@ -101,6 +99,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - **Breaking:** the `recognize_url` feature, which gated nothing.
+- **Breaking:** the legacy raw FFI exports `sp_recognize_url`,
+  `sp_recognize_url_with_metadata`, `sp_recognize_url_with_custom_model` and
+  `sp_transcription_segments_free`, their `TranscriptionSegmentRaw` and
+  `RecognitionMetadataRaw` structs, and the `sp_verify_ffi_layout` check that
+  only covered those structs. The safe API never called them;
+  `recognize_request`, `recognize_in_path_with_metadata` and
+  `recognize_in_path_with_custom_model` cover the same ground.
 
 ## [0.8.7] - 2026-06-06
 

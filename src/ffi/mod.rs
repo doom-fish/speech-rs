@@ -4,42 +4,6 @@
 
 use core::ffi::{c_char, c_void};
 
-/// Mirrors `SPTranscriptionSegmentRaw` in Speech.swift.
-#[repr(C)]
-pub struct TranscriptionSegmentRaw {
-    pub text: *mut c_char,
-    pub confidence: f32,
-    pub timestamp: f64,
-    pub duration: f64,
-}
-
-// ----------------------------------------------------------------------------
-// ABI layout assertions for the `#[repr(C)]` structs shared with the Swift
-// bridge (`SPTranscriptionSegmentRaw` / `SPRecognitionMetadataRaw`).
-//
-// These structs are written by Swift (via `UnsafeMutablePointer`) and read by
-// Rust across the `@_cdecl` FFI boundary. If their size or alignment ever
-// drifts from what the Swift side expects, the marshalled bytes silently
-// corrupt. These compile-time assertions pin the exact ABI; the runtime
-// `sp_verify_ffi_layout` check in `tests/ffi_layout_tests.rs` guards that the
-// Swift `MemoryLayout` agrees too.
-use core::mem::{align_of, size_of};
-
-const _: () = assert!(size_of::<TranscriptionSegmentRaw>() == 32);
-const _: () = assert!(align_of::<TranscriptionSegmentRaw>() == 8);
-
-const _: () = assert!(size_of::<RecognitionMetadataRaw>() == 40);
-const _: () = assert!(align_of::<RecognitionMetadataRaw>() == 8);
-
-extern "C" {
-    /// Cross-language ABI check implemented in the Swift bridge.
-    ///
-    /// Returns `true` only if the Swift `MemoryLayout` (size, stride and
-    /// alignment) of the FFI structs matches the values pinned on the Rust
-    /// side. Verified by `tests/ffi_layout_tests.rs`.
-    pub fn sp_verify_ffi_layout() -> bool;
-}
-
 extern "C" {
     pub fn sp_string_free(s: *mut c_char);
 
@@ -48,27 +12,6 @@ extern "C" {
 
     pub fn sp_recognizer_is_available(locale_id: *const c_char) -> bool;
     pub fn sp_recognizer_default_locale_identifier() -> *mut c_char;
-
-    pub fn sp_recognize_url(
-        audio_path: *const c_char,
-        locale_id: *const c_char,
-        out_transcript: *mut *mut c_char,
-        out_segments: *mut *mut c_void,
-        out_segment_count: *mut usize,
-        out_error_message: *mut *mut c_char,
-    ) -> i32;
-
-    pub fn sp_transcription_segments_free(array: *mut c_void, count: usize);
-
-    pub fn sp_recognize_url_with_metadata(
-        audio_path: *const c_char,
-        locale_id: *const c_char,
-        out_transcript: *mut *mut c_char,
-        out_segments: *mut *mut c_void,
-        out_segment_count: *mut usize,
-        out_metadata: *mut RecognitionMetadataRaw,
-        out_error_message: *mut *mut c_char,
-    ) -> i32;
 
     pub fn sp_live_recognition_start(
         locale_id: *const c_char,
@@ -83,15 +26,6 @@ extern "C" {
     pub fn sp_live_recognition_stop(token: *mut c_void);
     pub fn sp_live_recognition_end_audio(token: *mut c_void);
     pub fn sp_live_recognition_cancel(token: *mut c_void);
-
-    pub fn sp_recognize_url_with_custom_model(
-        audio_path: *const c_char,
-        locale_id: *const c_char,
-        language_model_path: *const c_char,
-        vocabulary_path: *const c_char,
-        out_transcript: *mut *mut c_char,
-        out_error_message: *mut *mut c_char,
-    ) -> i32;
 
     pub fn sp_supported_locales_json() -> *mut c_char;
     pub fn sp_recognizer_locale_identifier(
@@ -406,15 +340,6 @@ extern "C" {
         final_flags: *const bool,
         count: usize,
     );
-}
-
-#[repr(C)]
-pub struct RecognitionMetadataRaw {
-    pub has_metadata: bool,
-    pub speaking_rate: f64,
-    pub average_pause_duration: f64,
-    pub speech_start_timestamp: f64,
-    pub speech_duration: f64,
 }
 
 pub type LiveCallback =
