@@ -103,6 +103,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   30 s it returns `SpeechError::TimedOut` instead of reporting the placeholder
   `NotDetermined`, and the answer is stored under a lock instead of in a
   variable the waiter could read while the handler wrote it.
+- **Breaking:** `TaskHint::from_raw` and `AssetInventoryStatus::from_raw`
+  return `Option<Self>` instead of mapping unknown values to `Unspecified` and
+  `Unsupported`. `AssetInventory::status_for_modules` returns
+  `SpeechError::Unknown` for a status this crate doesn't know, and the bridge
+  no longer reports such a status as unsupported.
 - `rust-version` is now 1.82 (was 1.76), and `doom-fish-utils` 0.4.1 is
   required.
 

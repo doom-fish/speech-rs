@@ -31,12 +31,13 @@ impl TaskHint {
     }
 
     #[must_use]
-    pub const fn from_raw(raw: i32) -> Self {
+    pub const fn from_raw(raw: i32) -> Option<Self> {
         match raw {
-            1 => Self::Dictation,
-            2 => Self::Search,
-            3 => Self::Confirmation,
-            _ => Self::Unspecified,
+            0 => Some(Self::Unspecified),
+            1 => Some(Self::Dictation),
+            2 => Some(Self::Search),
+            3 => Some(Self::Confirmation),
+            _ => None,
         }
     }
 }
@@ -452,7 +453,7 @@ impl From<AudioFormatPayload> for AudioFormat {
 #[cfg(test)]
 mod tests {
     use super::{
-        AudioBufferRecognitionRequest, CallbackQueue, RecognitionRequestOptions,
+        AudioBufferRecognitionRequest, CallbackQueue, RecognitionRequestOptions, TaskHint,
         UrlRecognitionRequest,
     };
 
@@ -504,5 +505,19 @@ mod tests {
                 max_concurrent_operation_count: Some(1),
             }
         );
+    }
+
+    #[test]
+    fn task_hints_round_trip_and_reject_unknown_raw_values() {
+        for hint in [
+            TaskHint::Unspecified,
+            TaskHint::Dictation,
+            TaskHint::Search,
+            TaskHint::Confirmation,
+        ] {
+            assert_eq!(TaskHint::from_raw(hint.as_raw()), Some(hint));
+        }
+        assert_eq!(TaskHint::from_raw(4), None);
+        assert_eq!(TaskHint::from_raw(-1), None);
     }
 }

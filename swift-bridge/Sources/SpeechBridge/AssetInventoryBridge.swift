@@ -73,7 +73,7 @@ private func spxAssetInventoryStatusRaw(_ status: AssetInventory.Status) -> Int3
   case .installed:
     return 3
   @unknown default:
-    return 0
+    return -1
   }
 }
 

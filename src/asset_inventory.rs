@@ -26,12 +26,13 @@ pub enum AssetInventoryStatus {
 
 impl AssetInventoryStatus {
     #[must_use]
-    pub const fn from_raw(raw: i32) -> Self {
+    pub const fn from_raw(raw: i32) -> Option<Self> {
         match raw {
-            1 => Self::Supported,
-            2 => Self::Downloading,
-            3 => Self::Installed,
-            _ => Self::Unsupported,
+            0 => Some(Self::Unsupported),
+            1 => Some(Self::Supported),
+            2 => Some(Self::Downloading),
+            3 => Some(Self::Installed),
+            _ => None,
         }
     }
 }
@@ -178,11 +179,13 @@ impl AssetInventory {
                 &raw mut err_msg,
             )
         };
-        if status == ffi::status::OK {
-            Ok(AssetInventoryStatus::from_raw(raw_status))
-        } else {
-            Err(unsafe { error_from_status_or_json(status, err_msg) })
+        if status != ffi::status::OK {
+            return Err(unsafe { error_from_status_or_json(status, err_msg) });
         }
+        AssetInventoryStatus::from_raw(raw_status).ok_or_else(|| SpeechError::Unknown {
+            code: raw_status,
+            message: "AssetInventory reported a status this crate does not know".into(),
+        })
     }
 
     pub fn asset_installation_request_for_modules<M, I>(

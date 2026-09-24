@@ -197,3 +197,17 @@ fn asset_inventory_and_custom_language_model_builders_work() {
     assert_eq!(data.identifier(), "demo");
     assert_eq!(data.version(), "1.0");
 }
+
+#[test]
+fn asset_inventory_status_rejects_unknown_raw_values() {
+    assert_eq!(
+        AssetInventoryStatus::from_raw(0),
+        Some(AssetInventoryStatus::Unsupported)
+    );
+    assert_eq!(
+        AssetInventoryStatus::from_raw(3),
+        Some(AssetInventoryStatus::Installed)
+    );
+    assert_eq!(AssetInventoryStatus::from_raw(-1), None);
+    assert_eq!(AssetInventoryStatus::from_raw(4), None);
+}
