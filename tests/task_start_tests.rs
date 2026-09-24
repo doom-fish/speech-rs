@@ -58,3 +58,35 @@ fn live_recognition_honors_the_recognizer_callback_queue() {
         "unexpected result: {error:?}"
     );
 }
+
+#[test]
+fn audio_buffer_task_controls_can_run_on_several_threads_at_once() {
+    let recognizer =
+        SpeechRecognizer::with_locale("en-US").expect("en-US is a valid locale identifier");
+    let Ok(task) =
+        recognizer.start_audio_buffer_task(&AudioBufferRecognitionRequest::new(), |_| {})
+    else {
+        println!("skipping: an audio-buffer task cannot start in this environment");
+        return;
+    };
+
+    std::thread::scope(|scope| {
+        for round in 0..8 {
+            let task = &task;
+            scope.spawn(move || match round % 3 {
+                0 => task.end_audio(),
+                1 => task.finish(),
+                _ => task.cancel(),
+            });
+        }
+    });
+
+    let state = task.state();
+    assert!(
+        matches!(
+            state,
+            TaskState::Finishing | TaskState::Canceling | TaskState::Completed
+        ),
+        "the task ignored finish and cancel: {state:?}"
+    );
+}

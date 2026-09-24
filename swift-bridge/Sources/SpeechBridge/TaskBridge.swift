@@ -129,6 +129,7 @@ private final class SPTaskBox: NSObject {
   let task: SFSpeechRecognitionTask
   let audioEngine: AVAudioEngine?
   let hasMicrophoneTap: Bool
+  private let lock = NSLock()
   private var cleanedUp = false
 
   init(
@@ -158,16 +159,22 @@ private final class SPTaskBox: NSObject {
   }
 
   func finish() {
+    lock.lock()
+    defer { lock.unlock() }
     stopAudioEngineIfNeeded()
     task.finish()
   }
 
   func cancel() {
+    lock.lock()
+    defer { lock.unlock() }
     stopAudioEngineIfNeeded()
     task.cancel()
   }
 
   func endAudio() {
+    lock.lock()
+    defer { lock.unlock() }
     stopAudioEngineIfNeeded()
     audioBufferRequest?.endAudio()
   }
@@ -177,13 +184,14 @@ private final class SPTaskBox: NSObject {
   }
 
   func cleanupAndRelease(cancelTask: Bool) {
+    lock.lock()
+    defer { lock.unlock() }
     guard !cleanedUp else { return }
     cleanedUp = true
     delegate.deactivate()
+    stopAudioEngineIfNeeded()
     if cancelTask {
-      cancel()
-    } else {
-      stopAudioEngineIfNeeded()
+      task.cancel()
     }
   }
 }

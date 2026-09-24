@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never completed.
 - The global live-session table is guarded by a lock, and `end_audio`, `cancel`
   and stop are serialized per session.
+- `finish`, `cancel`, `end_audio` and drop are serialized per recognition
+  task too, so concurrent calls on these `Sync` tasks no longer race on the
+  microphone task's audio engine.
 - `AssetInstallationRequest::download_and_install` no longer cancels the
   download after 120 s.
 - `start_audio_buffer_task` checks speech authorization, like the other task
