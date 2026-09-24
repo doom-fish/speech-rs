@@ -60,8 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - COVERAGE lists `AnalyzerInput` as a gap and `SpeechAnalyzer` as whole-file
   only.
 - README: corrected the command-line authorization claim, and documented the
-  minimum OS versions, microphone permission and the main-queue callback
-  default.
+  minimum OS versions, microphone permission and callback queues.
 
 ### Changed
 
@@ -72,12 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returns `SpeechError::TimedOut` and the download keeps running; a later call
   joins it.
 - **Breaking (raw FFI):** `sp_request_authorization` writes the status to an
-  out-parameter and returns a bridge status, the async callbacks take a
-  status code,
-  `sp_live_recognition_start` takes the recognizer JSON, a retain callback and
-  an out-status, the
-  task starters take an out-status,
-  `sp_asset_installation_request_download_and_install` takes a timeout, and
+  out-parameter and returns a bridge status; the async callbacks take a status
+  code; `sp_live_recognition_start` takes the recognizer JSON, a retain
+  callback and an out-status; the task starters take an out-status;
+  `sp_asset_installation_request_download_and_install` takes a timeout; and
   the three async thunks return a task handle that the caller must pass to
   `sp_async_task_cancel_and_release`.
 - **Breaking:** recognizer callbacks default to a dedicated serial background
