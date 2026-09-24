@@ -18,9 +18,11 @@
 //! - Multi-fire delegate APIs (`SFSpeechRecognitionTaskDelegate` event stream,
 //!   live recognition updates) are **Tier-2** — they map to Streams, not
 //!   Futures, and are not covered here.
-//! - All futures are **cancel-safe**: dropping the future before it resolves
-//!   simply discards the context pointer; the Swift callback still fires but
-//!   its result is silently dropped.
+//! - Dropping a future before it resolves cancels the Swift work (the
+//!   recognition task or the analysis); the Swift callback still fires once
+//!   and its result is dropped. A custom language model preparation that has
+//!   already reached the framework runs to completion, because
+//!   `SFSpeechLanguageModel` has no cancellation API.
 //!
 //! ## Example
 //!
@@ -58,6 +60,17 @@ use crate::analyzer::SpeechModuleDescriptor;
 // ============================================================================
 // Internal helpers
 // ============================================================================
+
+struct SwiftTask(*mut c_void);
+
+unsafe impl Send for SwiftTask {}
+unsafe impl Sync for SwiftTask {}
+
+impl Drop for SwiftTask {
+    fn drop(&mut self) {
+        unsafe { ffi::sp_async_task_cancel_and_release(self.0) };
+    }
+}
 
 /// Parse a JSON string from the Swift bridge into a Rust value.
 fn parse_json_string<T: serde::de::DeserializeOwned>(
@@ -143,6 +156,7 @@ unsafe extern "C" fn string_result_cb(
 #[must_use = "futures do nothing unless polled"]
 pub struct RecognizeUrlFuture {
     inner: AsyncCompletionFuture<Result<String, SpeechError>>,
+    _task: SwiftTask,
 }
 
 impl std::fmt::Debug for RecognizeUrlFuture {
@@ -182,6 +196,7 @@ pub struct AnalyzeUrlFuture {
     /// The analyzer's module list, kept to reconstruct `SpeechAnalyzerOutput`
     /// from the JSON payload returned by the Swift bridge.
     modules: Vec<SpeechModuleDescriptor>,
+    _task: SwiftTask,
 }
 
 impl std::fmt::Debug for AnalyzeUrlFuture {
@@ -229,6 +244,7 @@ unsafe extern "C" fn prepare_language_model_cb(
 #[must_use = "futures do nothing unless polled"]
 pub struct PrepareLanguageModelFuture {
     inner: AsyncCompletionFuture<Result<(), SpeechError>>,
+    _task: SwiftTask,
 }
 
 impl std::fmt::Debug for PrepareLanguageModelFuture {
@@ -315,7 +331,7 @@ impl AsyncSpeechRecognizer {
         // Safety: the bridge copies every C string before it returns, so the
         //         pointers only have to outlive this call; ctx is a valid
         //         AsyncCompletion context pointer.
-        unsafe {
+        let task = SwiftTask(unsafe {
             ffi::sp_recognize_url_async(
                 audio_path.as_ptr(),
                 recognizer.locale_ptr(),
@@ -323,9 +339,12 @@ impl AsyncSpeechRecognizer {
                 request_json.as_ptr(),
                 string_result_cb,
                 ctx,
-            );
-        }
-        Ok(RecognizeUrlFuture { inner: future })
+            )
+        });
+        Ok(RecognizeUrlFuture {
+            inner: future,
+            _task: task,
+        })
     }
 }
 
@@ -380,15 +399,19 @@ impl AsyncSpeechAnalyzer {
         // Safety: the bridge copies every C string before it returns, so the
         //         pointers only have to outlive this call; ctx is a valid
         //         AsyncCompletion context pointer.
-        unsafe {
+        let task = SwiftTask(unsafe {
             ffi::sp_speech_analyzer_analyze_url_async(
                 audio_path.as_ptr(),
                 analyzer_json.as_ptr(),
                 string_result_cb,
                 ctx,
-            );
-        }
-        Ok(AnalyzeUrlFuture { inner: future, modules })
+            )
+        });
+        Ok(AnalyzeUrlFuture {
+            inner: future,
+            modules,
+            _task: task,
+        })
     }
 }
 
@@ -453,15 +476,18 @@ impl AsyncSpeechLanguageModel {
         // Safety: the bridge copies every C string before it returns, so the
         //         pointers only have to outlive this call; ctx is a valid
         //         AsyncCompletion context pointer.
-        unsafe {
+        let task = SwiftTask(unsafe {
             ffi::sp_prepare_custom_language_model_async(
                 asset_c.as_ptr(),
                 config_c.as_ptr(),
                 ignores_cache,
                 prepare_language_model_cb,
                 ctx,
-            );
-        }
-        Ok(PrepareLanguageModelFuture { inner: future })
+            )
+        });
+        Ok(PrepareLanguageModelFuture {
+            inner: future,
+            _task: task,
+        })
     }
 }

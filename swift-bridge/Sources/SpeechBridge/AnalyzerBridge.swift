@@ -413,13 +413,18 @@ func spxRunSpeechAnalyzer(
   }
 
   do {
-    let audioFile = try AVAudioFile(forReading: URL(fileURLWithPath: audioPath))
-    try await analyzer.start(inputAudioFile: audioFile, finishAfterFile: true)
-    let output = SPXSpeechAnalyzerOutputPayload(
-      modules: try await resultTask.value,
-      volatileRange: await analyzer.volatileRange.map(spxAnalyzerTimeRange)
-    )
-    return try spxEncodeJSON(output)
+    return try await withTaskCancellationHandler {
+      let audioFile = try AVAudioFile(forReading: URL(fileURLWithPath: audioPath))
+      try await analyzer.start(inputAudioFile: audioFile, finishAfterFile: true)
+      let output = SPXSpeechAnalyzerOutputPayload(
+        modules: try await resultTask.value,
+        volatileRange: await analyzer.volatileRange.map(spxAnalyzerTimeRange)
+      )
+      return try spxEncodeJSON(output)
+    } onCancel: {
+      resultTask.cancel()
+      Task { await analyzer.cancelAndFinishNow() }
+    }
   } catch {
     resultTask.cancel()
     await analyzer.cancelAndFinishNow()

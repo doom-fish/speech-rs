@@ -32,6 +32,90 @@ private func spxAsyncFailure(_ error: Error) -> SPXBridgeError {
     (error as? SPXBridgeError) ?? .framework(error)
 }
 
+private final class SPXAsyncTaskHandle {
+    let task: Task<Void, Never>
+
+    init(_ task: Task<Void, Never>) {
+        self.task = task
+    }
+}
+
+@_cdecl("sp_async_task_cancel_and_release")
+public func sp_async_task_cancel_and_release(_ token: UnsafeMutableRawPointer?) {
+    guard let token else { return }
+    let handle: SPXAsyncTaskHandle = spxUnretained(token)
+    handle.task.cancel()
+    spxRelease(token)
+}
+
+private final class SPXRecognitionWait: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<SFSpeechRecognitionResult, Error>?
+    private var recognitionTask: SFSpeechRecognitionTask?
+    private var cancelled = false
+
+    func start(
+        _ recognizer: SFSpeechRecognizer,
+        _ request: SFSpeechRecognitionRequest,
+        _ continuation: CheckedContinuation<SFSpeechRecognitionResult, Error>
+    ) {
+        lock.lock()
+        if cancelled {
+            lock.unlock()
+            continuation.resume(throwing: CancellationError())
+            return
+        }
+        self.continuation = continuation
+        lock.unlock()
+
+        let gate = SPXFinalResultGate()
+        let task = recognizer.recognitionTask(with: request) { result, error in
+            guard
+                gate.admits(
+                    hasResult: result != nil, isFinal: result?.isFinal ?? false,
+                    hasError: error != nil)
+            else { return }
+            if let error {
+                self.finish(.failure(SPXBridgeError.framework(error as NSError)))
+            } else if let result {
+                self.finish(.success(result))
+            } else {
+                self.finish(
+                    .failure(
+                        SPXBridgeError.recognitionFailed("recognition produced no final result")))
+            }
+        }
+
+        lock.lock()
+        let wasCancelled = cancelled
+        if !wasCancelled && self.continuation != nil {
+            recognitionTask = task
+        }
+        lock.unlock()
+        if wasCancelled {
+            task.cancel()
+        }
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        let task = recognitionTask
+        lock.unlock()
+        task?.cancel()
+        finish(.failure(CancellationError()))
+    }
+
+    private func finish(_ outcome: Result<SFSpeechRecognitionResult, Error>) {
+        lock.lock()
+        let continuation = self.continuation
+        self.continuation = nil
+        recognitionTask = nil
+        lock.unlock()
+        continuation?.resume(with: outcome)
+    }
+}
+
 // MARK: — 1. SFSpeechRecognizer.requestAuthorization (completion handler)
 
 /// Async bridge for `SFSpeechRecognizer.requestAuthorization`.
@@ -72,7 +156,7 @@ public func sp_recognize_url_async(
     _ requestJson: UnsafePointer<CChar>?,
     _ cb: @escaping SPXStringAsyncCb,
     _ ctx: UnsafeMutableRawPointer
-) {
+) -> UnsafeMutableRawPointer {
     let path = String(cString: audioPath)
     let setup = Result { () throws -> (SFSpeechRecognizer, SFSpeechURLRecognitionRequest) in
         let recognizerPayload = try spxDecodeJSONIfPresent(
@@ -85,7 +169,7 @@ public func sp_recognize_url_async(
             requestPayload, recognizerPayload: recognizerPayload, to: request)
         return (recognizer, request)
     }
-    Task.detached {
+    let task = Task.detached {
         do {
             guard FileManager.default.fileExists(atPath: path) else {
                 throw SPXBridgeError.audioLoadFailed("audio file does not exist: \(path)")
@@ -97,28 +181,15 @@ public func sp_recognize_url_async(
                     "recognizer is unavailable for this locale")
             }
 
-            let gate = SPXFinalResultGate()
-            var recognitionTask: SFSpeechRecognitionTask?
-            let finalResult: SFSpeechRecognitionResult =
+            let wait = SPXRecognitionWait()
+            let finalResult: SFSpeechRecognitionResult = try await withTaskCancellationHandler {
                 try await withCheckedThrowingContinuation { cont in
-                    recognitionTask = recognizer.recognitionTask(with: request) { result, error in
-                        guard
-                            gate.admits(
-                                hasResult: result != nil, isFinal: result?.isFinal ?? false,
-                                hasError: error != nil)
-                        else { return }
-                        if let error {
-                            cont.resume(throwing: SPXBridgeError.framework(error as NSError))
-                        } else if let result {
-                            cont.resume(returning: result)
-                        } else {
-                            cont.resume(
-                                throwing: SPXBridgeError.recognitionFailed(
-                                    "recognition produced no final result"))
-                        }
-                    }
+                    wait.start(recognizer, request, cont)
                 }
-            withExtendedLifetime((recognizer, recognitionTask)) {}
+            } onCancel: {
+                wait.cancel()
+            }
+            withExtendedLifetime(recognizer) {}
 
             let json = try spxEncodeJSON(spxEncodeRecognitionResult(finalResult))
             json.withCString { ptr in cb(ptr, nil, SPX_OK, ctx) }
@@ -127,6 +198,7 @@ public func sp_recognize_url_async(
             spxErrorMessage(failure).withCString { ptr in cb(nil, ptr, failure.statusCode, ctx) }
         }
     }
+    return spxRetain(SPXAsyncTaskHandle(task))
 }
 
 // MARK: — 3. SpeechAnalyzer.analyze (macOS 26.0+, natively async throws)
@@ -144,12 +216,12 @@ public func sp_speech_analyzer_analyze_url_async(
     _ analyzerJson: UnsafePointer<CChar>,
     _ cb: @escaping SPXStringAsyncCb,
     _ ctx: UnsafeMutableRawPointer
-) {
+) -> UnsafeMutableRawPointer {
     #if SPEECH_HAS_MACOS26_SDK
     let path = String(cString: audioPath)
     let payload = Result { try spxDecodeJSON(analyzerJson, as: SPXSpeechAnalyzerPayload.self) }
     #endif
-    Task.detached {
+    let task = Task.detached {
         do {
             #if SPEECH_HAS_MACOS26_SDK
             if #available(macOS 26.0, *) {
@@ -164,6 +236,7 @@ public func sp_speech_analyzer_analyze_url_async(
             spxErrorMessage(failure).withCString { ptr in cb(nil, ptr, failure.statusCode, ctx) }
         }
     }
+    return spxRetain(SPXAsyncTaskHandle(task))
 }
 
 // MARK: — 4. SFSpeechLanguageModel.prepareCustomLanguageModel (completion handler)
@@ -178,12 +251,12 @@ public func sp_prepare_custom_language_model_async(
     _ ignoresCache: Bool,
     _ cb: @escaping SPXVoidAsyncCb,
     _ ctx: UnsafeMutableRawPointer
-) {
+) -> UnsafeMutableRawPointer {
     let path = String(cString: assetPath)
     let configPayload = Result {
         try spxDecodeJSON(configurationJson, as: SPXLanguageModelConfigurationPayload.self)
     }
-    Task.detached {
+    let task = Task.detached {
         do {
             if #available(macOS 14.0, *) {
                 guard FileManager.default.fileExists(atPath: path) else {
@@ -194,6 +267,7 @@ public func sp_prepare_custom_language_model_async(
                 let configuration = try spxMakeLanguageModelConfiguration(
                     from: configPayload.get())
                 let assetURL = URL(fileURLWithPath: path)
+                try Task.checkCancellation()
 
                 try await withCheckedThrowingContinuation {
                     (cont: CheckedContinuation<Void, Error>) in
@@ -234,4 +308,5 @@ public func sp_prepare_custom_language_model_async(
             spxErrorMessage(failure).withCString { ptr in cb(ptr, failure.statusCode, ctx) }
         }
     }
+    return spxRetain(SPXAsyncTaskHandle(task))
 }

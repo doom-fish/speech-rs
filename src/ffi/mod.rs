@@ -370,7 +370,7 @@ extern "C" {
         request_json: *const c_char,
         cb: StringAsyncCallback,
         ctx: *mut c_void,
-    );
+    ) -> *mut c_void;
 
     /// Non-blocking `SpeechAnalyzer` analysis (macOS 26.0+).
     /// Fires `cb(json, nil, 0, ctx)` on success, `cb(nil, error, status, ctx)` on failure.
@@ -380,7 +380,7 @@ extern "C" {
         analyzer_json: *const c_char,
         cb: StringAsyncCallback,
         ctx: *mut c_void,
-    );
+    ) -> *mut c_void;
 
     /// Non-blocking `SFSpeechLanguageModel.prepareCustomLanguageModel` (macOS 14.0+).
     /// Fires `cb(nil, 0, ctx)` on success, `cb(error, status, ctx)` on failure.
@@ -390,7 +390,9 @@ extern "C" {
         ignores_cache: bool,
         cb: VoidAsyncCallback,
         ctx: *mut c_void,
-    );
+    ) -> *mut c_void;
+
+    pub fn sp_async_task_cancel_and_release(token: *mut c_void);
 
     #[doc(hidden)]
     pub fn sp_final_result_gate_admitted_mask(events: *const u8, count: usize) -> u64;

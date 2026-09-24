@@ -263,4 +263,74 @@ mod async_tests {
             result.transcript()
         );
     }
+
+    unsafe extern "C" fn record_status(
+        _json: *const std::ffi::c_char,
+        _error: *const std::ffi::c_char,
+        status: i32,
+        ctx: *mut std::ffi::c_void,
+    ) {
+        let sender = unsafe { Box::from_raw(ctx.cast::<std::sync::mpsc::Sender<i32>>()) };
+        let _ = sender.send(status);
+    }
+
+    fn cancel_main_queue_recognition_after(
+        audio: &Path,
+        delay: std::time::Duration,
+    ) -> Option<i32> {
+        let path = std::ffi::CString::new(audio.to_str()?).ok()?;
+        let locale = std::ffi::CString::new("en-US").ok()?;
+        let recognizer_json = std::ffi::CString::new(
+            r#"{"defaultTaskHint":0,"queue":{"kind":"main","name":null,"maxConcurrentOperationCount":null}}"#,
+        )
+        .ok()?;
+        let (sender, receiver) = std::sync::mpsc::channel::<i32>();
+        let ctx = Box::into_raw(Box::new(sender)).cast::<std::ffi::c_void>();
+        let task = unsafe {
+            speech::ffi::sp_recognize_url_async(
+                path.as_ptr(),
+                locale.as_ptr(),
+                recognizer_json.as_ptr(),
+                std::ptr::null(),
+                record_status,
+                ctx,
+            )
+        };
+        std::thread::sleep(delay);
+        unsafe { speech::ffi::sp_async_task_cancel_and_release(task) };
+        receiver
+            .recv_timeout(std::time::Duration::from_secs(20))
+            .ok()
+    }
+
+    #[test]
+    fn dropping_a_recognition_cancels_it_even_when_its_callbacks_cannot_arrive() {
+        if !SpeechRecognizer::authorization_status().is_authorized() {
+            println!("skipping: speech recognition is not authorized for this process");
+            return;
+        }
+        let audio = Path::new(env!("CARGO_TARGET_TMPDIR")).join("speech-rs-cancel.aiff");
+        let spoken = std::process::Command::new("/usr/bin/say")
+            .arg("-o")
+            .arg(&audio)
+            .arg("the quick brown fox jumps over the lazy dog")
+            .status();
+        if !spoken.is_ok_and(|status| status.success()) {
+            println!("skipping: `say` could not synthesize a test utterance");
+            return;
+        }
+
+        for delay in [
+            std::time::Duration::ZERO,
+            std::time::Duration::from_millis(500),
+        ] {
+            let status = cancel_main_queue_recognition_after(&audio, delay)
+                .expect("a cancelled recognition must still complete its callback");
+            assert_ne!(
+                status,
+                speech::ffi::status::OK,
+                "a cancelled recognition must not report success (delay {delay:?})"
+            );
+        }
+    }
 }

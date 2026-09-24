@@ -70,8 +70,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking (raw FFI):** the async callbacks take a status code,
   `sp_live_recognition_start` takes the recognizer JSON, a retain callback and
   an out-status, the
-  task starters take an out-status, and
-  `sp_asset_installation_request_download_and_install` takes a timeout.
+  task starters take an out-status,
+  `sp_asset_installation_request_download_and_install` takes a timeout, and
+  the three async thunks return a task handle that the caller must pass to
+  `sp_async_task_cancel_and_release`.
 - **Breaking:** recognizer callbacks default to a dedicated serial background
   queue instead of the main queue, so recognition completes in command-line
   tools and under `cargo test`, where nothing services the main queue.
@@ -86,6 +88,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of a locale string, so live updates use that recognizer's locale, default
   task hint and callback queue (a dedicated serial queue by default) instead
   of always the main queue.
+- **Breaking:** dropping `RecognizeUrlFuture` or `AnalyzeUrlFuture` before it
+  resolves cancels the Swift work (the recognition task, or the analysis)
+  instead of letting it run on. The bridge still delivers its callback exactly
+  once, even when the recognizer's queue is never serviced, so the completion
+  context is always released. Dropping `PrepareLanguageModelFuture` stops a
+  preparation that hasn't reached the framework yet; `SFSpeechLanguageModel`
+  has no cancellation API after that.
 - `rust-version` is now 1.82 (was 1.76), and `doom-fish-utils` 0.4.1 is
   required.
 
