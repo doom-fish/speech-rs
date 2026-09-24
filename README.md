@@ -115,7 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Callback queues
 
-Result handlers and task delegate events run on the recognizer's callback queue. By default every recognition gets its own serial background queue (`CallbackQueue::default()`, the same as `CallbackQueue::background()`), so callbacks arrive in order and don't depend on the main run loop. `CallbackQueue::Main` is an explicit choice for apps that run the main run loop; in a program that doesn't (most command-line tools, and `cargo test`), main-queue callbacks never run, recognition never completes, and the blocking calls time out. `LiveRecognition` always delivers on the main queue.
+Result handlers and task delegate events run on the recognizer's callback queue. By default every recognition gets its own serial background queue (`CallbackQueue::default()`, the same as `CallbackQueue::background()`), so callbacks arrive in order and don't depend on the main run loop. `CallbackQueue::Main` is an explicit choice for apps that run the main run loop; in a program that doesn't (most command-line tools, and `cargo test`), main-queue callbacks never run, recognition never completes, and the blocking calls time out. `LiveRecognition::start` takes a `SpeechRecognizer`, so live updates follow the same locale and callback queue.
 
 ## Privacy: on-device by default
 

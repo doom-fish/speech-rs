@@ -308,9 +308,8 @@ impl AsyncSpeechRecognizer {
         request: &UrlRecognitionRequest,
     ) -> Result<RecognizeUrlFuture, SpeechError> {
         let audio_path = cstring_from_path(request.path(), "audio path")?;
-        let recognizer_json = recognizer.recognizer_json_cstring()?;
+        let recognizer_json = recognizer.recognizer_json()?;
         let request_json = request.options().to_json_cstring()?;
-        let locale_id = recognizer.locale_cstring();
 
         let (future, ctx) = AsyncCompletion::create();
         // Safety: the bridge copies every C string before it returns, so the
@@ -319,7 +318,7 @@ impl AsyncSpeechRecognizer {
         unsafe {
             ffi::sp_recognize_url_async(
                 audio_path.as_ptr(),
-                locale_id.as_ref().map_or(std::ptr::null(), |c| c.as_ptr()),
+                recognizer.locale_ptr(),
                 recognizer_json.as_ptr(),
                 request_json.as_ptr(),
                 string_result_cb,

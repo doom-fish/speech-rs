@@ -68,7 +68,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returns `SpeechError::TimedOut` and the download keeps running; a later call
   joins it.
 - **Breaking (raw FFI):** the async callbacks take a status code,
-  `sp_live_recognition_start` takes a retain callback and an out-status, the
+  `sp_live_recognition_start` takes the recognizer JSON, a retain callback and
+  an out-status, the
   task starters take an out-status, and
   `sp_asset_installation_request_download_and_install` takes a timeout.
 - **Breaking:** recognizer callbacks default to a dedicated serial background
@@ -81,6 +82,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** `SpeechRecognizer::with_locale` returns
   `Result<Self, SpeechError>` and reports an interior NUL as
   `InvalidArgument` instead of panicking; `with_locale_checked` is removed.
+- **Breaking:** `LiveRecognition::start` takes a `&SpeechRecognizer` instead
+  of a locale string, so live updates use that recognizer's locale, default
+  task hint and callback queue (a dedicated serial queue by default) instead
+  of always the main queue.
 - `rust-version` is now 1.82 (was 1.76), and `doom-fish-utils` 0.4.1 is
   required.
 

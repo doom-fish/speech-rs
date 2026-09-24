@@ -72,6 +72,7 @@ extern "C" {
 
     pub fn sp_live_recognition_start(
         locale_id: *const c_char,
+        recognizer_json: *const c_char,
         callback: LiveCallback,
         user_info: *mut c_void,
         ctx_retain: ContextRefCallback,

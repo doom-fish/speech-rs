@@ -3,13 +3,13 @@
 
 use core::ffi::{c_char, c_void};
 use core::ptr;
-use std::ffi::CString;
 
 use doom_fish_utils::callback_context::CallbackContext;
 
 use crate::error::SpeechError;
 use crate::ffi;
 use crate::private::error_from_status;
+use crate::recognizer::SpeechRecognizer;
 
 /// One update from the live recogniser.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,11 +66,9 @@ unsafe extern "C" fn trampoline(user_info: *mut c_void, transcript: *const c_cha
 }
 
 impl LiveRecognition {
-    /// Start live recognition. The `callback` fires on Apple's recognition
-    /// queue with each partial / final update.
-    ///
-    /// `locale` is a BCP-47 identifier (e.g. `"en-US"`, `"sv-SE"`). Pass
-    /// `None` for the system default.
+    /// Start live recognition with `recognizer`'s locale, default task hint
+    /// and callback queue. The `callback` fires on that queue with each
+    /// partial / final update.
     ///
     /// Requires microphone permission + `SFSpeechRecognizer` authorization.
     ///
@@ -80,26 +78,20 @@ impl LiveRecognition {
     /// authorized, [`SpeechError::RecognizerUnavailable`] if Apple's
     /// recogniser is unavailable, [`SpeechError::AudioLoadFailed`] if no
     /// audio input can be started, or [`SpeechError::InvalidArgument`] for
-    /// invalid locale.
-    pub fn start<F>(locale: Option<&str>, callback: F) -> Result<Self, SpeechError>
+    /// an invalid recognizer configuration.
+    pub fn start<F>(recognizer: &SpeechRecognizer, callback: F) -> Result<Self, SpeechError>
     where
         F: Fn(LiveUpdate) + Send + Sync + 'static,
     {
-        let locale_c = match locale {
-            Some(l) => Some(
-                CString::new(l)
-                    .map_err(|e| SpeechError::InvalidArgument(format!("locale NUL: {e}")))?,
-            ),
-            None => None,
-        };
-
+        let recognizer_json = recognizer.recognizer_json()?;
         let callback: Callback = Box::new(callback);
         let context = CallbackContext::new(callback);
         let mut status = ffi::status::RECOGNIZER_UNAVAILABLE;
         let mut err_msg: *mut c_char = ptr::null_mut();
         let token = unsafe {
             ffi::sp_live_recognition_start(
-                locale_c.as_ref().map_or(ptr::null(), |c| c.as_ptr()),
+                recognizer.locale_ptr(),
+                recognizer_json.as_ptr(),
                 trampoline,
                 context.as_ptr(),
                 CallbackContext::<Callback>::RETAIN,

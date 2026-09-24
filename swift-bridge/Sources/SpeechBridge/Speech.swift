@@ -407,12 +407,7 @@ private final class LiveSession {
     private let lock = NSLock()
     private var task: SFSpeechRecognitionTask?
 
-    init?(localeId: String) {
-        let locale = Locale(identifier: localeId)
-        guard let recognizer = SFSpeechRecognizer(locale: locale),
-              recognizer.isAvailable else {
-            return nil
-        }
+    init(recognizer: SFSpeechRecognizer) {
         self.recognizer = recognizer
         self.request = SFSpeechAudioBufferRecognitionRequest()
         self.request.shouldReportPartialResults = true
@@ -498,6 +493,7 @@ private func spxLiveSession(_ token: UnsafeMutableRawPointer?) -> LiveSession? {
 @_cdecl("sp_live_recognition_start")
 public func sp_live_recognition_start(
     _ localeId: UnsafePointer<CChar>?,
+    _ recognizerJson: UnsafePointer<CChar>?,
     _ callback: @escaping SPStreamCallback,
     _ userInfo: UnsafeMutableRawPointer?,
     _ ctxRetain: @escaping SPContextRefCallback,
@@ -507,10 +503,14 @@ public func sp_live_recognition_start(
 ) -> UnsafeMutableRawPointer? {
     do {
         try spxEnsureAuthorized()
-        let locale = localeId.map { String(cString: $0) } ?? Locale.current.identifier
-        guard let session = LiveSession(localeId: locale) else {
-            throw SPXBridgeError.recognizerUnavailable("recognizer unavailable for locale \(locale)")
+        let recognizerPayload = try spxDecodeJSONIfPresent(
+            recognizerJson, as: SPXRecognizerPayload.self)
+        let recognizer = try spxCreateRecognizer(
+            localeId: localeId, recognizerPayload: recognizerPayload)
+        guard recognizer.isAvailable else {
+            throw SPXBridgeError.recognizerUnavailable("recognizer is unavailable for this locale")
         }
+        let session = LiveSession(recognizer: recognizer)
         try session.start(
             relay: SPLiveResultRelay(
                 callback: callback, userInfo: userInfo, ctxRetain: ctxRetain,

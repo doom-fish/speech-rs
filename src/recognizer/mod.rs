@@ -438,13 +438,13 @@ impl SpeechRecognizer {
         }
     }
 
-    fn locale_ptr(&self) -> *const c_char {
+    pub(crate) fn locale_ptr(&self) -> *const c_char {
         self.locale_id
             .as_ref()
             .map_or(ptr::null(), |value| value.as_ptr())
     }
 
-    fn recognizer_json(&self) -> Result<CString, SpeechError> {
+    pub(crate) fn recognizer_json(&self) -> Result<CString, SpeechError> {
         if matches!(
             self.callback_queue,
             CallbackQueue::Background {
@@ -465,19 +465,6 @@ impl SpeechRecognizer {
         )
     }
 
-    /// Public(crate) accessor for the `async` feature — returns the recognizer
-    /// JSON `CString` so `async_api` can pass it to the Swift thunk.
-    #[cfg(feature = "async")]
-    pub(crate) fn recognizer_json_cstring(&self) -> Result<CString, SpeechError> {
-        self.recognizer_json()
-    }
-
-    /// Public(crate) accessor for the `async` feature — returns an `Option<CString>`
-    /// for the locale identifier, or `None` for the default locale.
-    #[cfg(feature = "async")]
-    pub(crate) fn locale_cstring(&self) -> Option<CString> {
-        self.locale_id.clone()
-    }
 }
 
 fn simple_result_from_detailed(detailed: &DetailedRecognitionResult) -> RecognitionResult {

@@ -39,9 +39,22 @@ fn live_recognition_requires_authorization_before_opening_the_microphone() {
         println!("skipping: starting live recognition here would open the microphone");
         return;
     }
-    let error = LiveRecognition::start(Some("en-US"), |_| {}).err();
+    let recognizer =
+        SpeechRecognizer::with_locale("en-US").expect("en-US is a valid locale identifier");
+    let error = LiveRecognition::start(&recognizer, |_| {}).err();
     assert!(
         matches!(error, Some(SpeechError::NotAuthorized(_))),
+        "unexpected result: {error:?}"
+    );
+}
+
+#[test]
+fn live_recognition_honors_the_recognizer_callback_queue() {
+    let recognizer = SpeechRecognizer::new()
+        .with_callback_queue(CallbackQueue::background().with_max_concurrent_operations(0));
+    let error = LiveRecognition::start(&recognizer, |_| {}).err();
+    assert!(
+        matches!(error, Some(SpeechError::InvalidArgument(_))),
         "unexpected result: {error:?}"
     );
 }
