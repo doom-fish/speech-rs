@@ -15,7 +15,7 @@ mod async_tests {
     use speech::async_api::{
         AsyncSpeechAnalyzer, AsyncSpeechLanguageModel, AsyncSpeechRecognizer,
     };
-    use speech::error::SpeechError;
+    use speech::error::{AuthorizationStatus, SpeechError};
     use speech::language_model::LanguageModelConfiguration;
     use speech::recognizer::SpeechRecognizer;
     use speech::request::{RecognitionRequestOptions, UrlRecognitionRequest};
@@ -27,11 +27,15 @@ mod async_tests {
 
     #[test]
     fn test_request_authorization_resolves() {
+        let current = SpeechRecognizer::authorization_status();
+        if current == AuthorizationStatus::NotDetermined {
+            println!("skipping: requesting authorization now would show a prompt");
+            return;
+        }
         let status = pollster::block_on(AsyncSpeechRecognizer::request_authorization());
         // The future itself must not panic and must return Ok.
         let status = status.expect("authorization future should resolve without error");
-        // Any valid variant is acceptable (NotDetermined, Denied, Restricted, Authorized).
-        let _ = format!("{status:?}");
+        assert_eq!(status, current);
         println!("test_request_authorization_resolves: status = {status:?}");
     }
 
