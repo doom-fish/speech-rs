@@ -10,7 +10,11 @@
 //!   thing is that the callback fires and the Future resolves.
 
 #[cfg(feature = "async")]
+mod common;
+
+#[cfg(feature = "async")]
 mod async_tests {
+    use crate::common::recognition_lock;
     use speech::analyzer::{SpeechAnalyzer, SpeechTranscriber, SpeechTranscriberPreset};
     use speech::async_api::{
         AsyncSpeechAnalyzer, AsyncSpeechLanguageModel, AsyncSpeechRecognizer,
@@ -223,6 +227,7 @@ mod async_tests {
 
     #[test]
     fn recognize_url_resolves_with_the_final_result_after_partial_results() {
+        let _recognition = recognition_lock();
         if !SpeechRecognizer::authorization_status().is_authorized() {
             println!("skipping: speech recognition is not authorized for this process");
             return;
@@ -309,6 +314,7 @@ mod async_tests {
 
     #[test]
     fn dropping_a_recognition_cancels_it_even_when_its_callbacks_cannot_arrive() {
+        let _recognition = recognition_lock();
         if !SpeechRecognizer::authorization_status().is_authorized() {
             println!("skipping: speech recognition is not authorized for this process");
             return;
