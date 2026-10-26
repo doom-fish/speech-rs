@@ -323,6 +323,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated crate documentation to describe full Speech framework coverage.
 - `recognize_in_path`, `recognize_in_path_with_metadata`, and custom-model recognition now route through the richer request pipeline while preserving their existing signatures.
 
+## [0.5.0] - 2026-05-16
+
+### Added
+
+- Add recognition with custom `SFSpeechLanguageModel` models.
+
+## [0.4.0] - 2026-05-16
+
+### Added
+
+- Add `LiveRecognition::end_audio()` and `LiveRecognition::cancel()`.
+
+## [0.3.0] - 2026-05-16
+
+### Added
+
+- Add `SFSpeechRecognitionMetadata` voice analytics.
+
+## [0.2.0] - 2026-05-16
+
+### Added
+
+- Add live audio-buffer speech recognition.
+
 ## [0.1.0] - Initial release
 
 ### Added
