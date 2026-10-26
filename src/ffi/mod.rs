@@ -26,6 +26,16 @@ extern "C" {
         out_status: *mut i32,
         out_error_message: *mut *mut c_char,
     ) -> *mut c_void;
+    pub fn sp_live_recognition_start_accumulated(
+        locale_id: *const c_char,
+        recognizer_json: *const c_char,
+        callback: LiveCallback,
+        user_info: *mut c_void,
+        ctx_retain: ContextRefCallback,
+        ctx_release: ContextRefCallback,
+        out_status: *mut i32,
+        out_error_message: *mut *mut c_char,
+    ) -> *mut c_void;
     pub fn sp_live_recognition_stop(token: *mut c_void);
     pub fn sp_live_recognition_end_audio(token: *mut c_void);
     pub fn sp_live_recognition_cancel(token: *mut c_void);

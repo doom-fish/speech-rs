@@ -154,19 +154,130 @@ private final class SPLiveResultRelay {
     }
 }
 
+/// Accumulates recognition regions so that a new partial result does not
+/// overwrite previously recognized speech.
+///
+/// Apple's SFSpeechRecognizer may begin reporting a new utterance without
+/// first emitting an isFinal result for the previous one.
+private final class TranscriptAccumulator {
+    private struct Region {
+        let start: TimeInterval
+        let end: TimeInterval
+        let text: String
+    }
+
+    private let lock = NSLock()
+
+    // Regions that have been superseded by later regions.
+    private var history: [Region] = []
+
+    // Most recent hypothesis with usable timing information.
+    private var currentRegion: Region?
+
+    // Latest hypothesis without usable timing information.
+    private var pendingText: String?
+
+    private let tolerance: TimeInterval = 0.15
+
+    func update(_ result: SFSpeechRecognitionResult) -> String {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let transcription = result.bestTranscription
+        let text = transcription.formattedString
+
+        let timedSegments = transcription.segments.filter {
+            $0.duration > 0
+        }
+
+        guard
+            let first = timedSegments.first,
+            let last = timedSegments.last
+        else {
+            // Apple often reports zero timestamps while building a hypothesis.
+            // Keep it provisional until timing information becomes available.
+            pendingText = text
+            return combinedTranscript()
+        }
+
+        let start = first.timestamp
+        let end = last.timestamp + last.duration
+
+        let incoming = Region(
+            start: start,
+            end: end,
+            text: text
+        )
+
+        if let current = currentRegion {
+            if incoming.start > current.end + tolerance {
+                // The new result belongs to a later audio interval.
+                // Preserve the previous region before replacing it.
+                history.append(current)
+                currentRegion = incoming
+            } else {
+                // The intervals overlap or are adjacent.
+                // Treat this as a revision of the current hypothesis.
+                currentRegion = incoming
+            }
+        } else {
+            currentRegion = incoming
+        }
+
+        // The timestamped hypothesis supersedes the provisional one.
+        pendingText = nil
+
+        return combinedTranscript()
+    }
+
+    private func combinedTranscript() -> String {
+        var parts = history.map(\.text)
+
+        if let currentRegion {
+            parts.append(currentRegion.text)
+        }
+
+        if let pendingText, !pendingText.isEmpty {
+            // A pending hypothesis may be a correction of the current region
+            // or the beginning of a new one. Avoid duplicating an identical
+            // or prefix-matching hypothesis while timestamps are unavailable.
+            if let currentRegion {
+                if pendingText != currentRegion.text &&
+                    !currentRegion.text.hasPrefix(pendingText) &&
+                    !pendingText.hasPrefix(currentRegion.text) {
+                    parts.append(pendingText)
+                } else if pendingText.hasPrefix(currentRegion.text) {
+                    parts.removeLast()
+                    parts.append(pendingText)
+                }
+            } else {
+                parts.append(pendingText)
+            }
+        }
+
+        return parts
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+}
+
 private final class LiveSession {
     let recognizer: SFSpeechRecognizer
     let request: SFSpeechAudioBufferRecognitionRequest
     let audioEngine: AVAudioEngine
     private let lock = NSLock()
     private var task: SFSpeechRecognitionTask?
+    private let accumulator: TranscriptAccumulator?
 
-    init(recognizer: SFSpeechRecognizer) {
+    init(recognizer: SFSpeechRecognizer, accumulateTranscripts: Bool = false) {
         self.recognizer = recognizer
         self.request = SFSpeechAudioBufferRecognitionRequest()
         self.request.shouldReportPartialResults = true
         self.request.requiresOnDeviceRecognition = true
         self.audioEngine = AVAudioEngine()
+
+        // Preserve the original streaming behavior unless accumulation is requested.
+        self.accumulator = accumulateTranscripts ? TranscriptAccumulator() : nil
     }
 
     func start(relay: SPLiveResultRelay) throws {
@@ -193,13 +304,23 @@ private final class LiveSession {
                 "audio engine start failed: \(error.localizedDescription)")
         }
 
-        task = recognizer.recognitionTask(with: request) { result, error in
+        task = recognizer.recognitionTask(with: request) { [self] result, error in
             if let error {
                 relay.deliver("error: \(error.localizedDescription)", isFinal: true)
                 return
             }
+
             guard let result else { return }
-            relay.deliver(result.bestTranscription.formattedString, isFinal: result.isFinal)
+
+            // Accumulate recognition regions only when explicitly enabled.
+            // Otherwise, preserve Apple's original partial-result behavior.
+            let transcript = accumulator?.update(result)
+                ?? result.bestTranscription.formattedString
+
+            relay.deliver(
+                transcript,
+                isFinal: result.isFinal
+            )
         }
     }
 
@@ -241,11 +362,8 @@ private func spxLiveSession(_ token: UnsafeMutableRawPointer?) -> LiveSession? {
     return liveSessions[token]
 }
 
-/// Start a live audio-buffer recognition session. Returns an opaque
-/// token (never NULL on success) that you pass back to
-/// `sp_live_recognition_stop`.
-@_cdecl("sp_live_recognition_start")
-public func sp_live_recognition_start(
+/// Shared implementation for raw and accumulated live recognition.
+private func spxStartLiveRecognition(
     _ localeId: UnsafePointer<CChar>?,
     _ recognizerJson: UnsafePointer<CChar>?,
     _ callback: @escaping SPStreamCallback,
@@ -253,7 +371,8 @@ public func sp_live_recognition_start(
     _ ctxRetain: @escaping SPContextRefCallback,
     _ ctxRelease: @escaping SPContextRefCallback,
     _ outStatus: UnsafeMutablePointer<Int32>?,
-    _ outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
+    _ outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?,
+    accumulateTranscripts: Bool
 ) -> UnsafeMutableRawPointer? {
     do {
         try spxEnsureAuthorized()
@@ -264,7 +383,10 @@ public func sp_live_recognition_start(
         guard recognizer.isAvailable else {
             throw SPXBridgeError.recognizerUnavailable("recognizer is unavailable for this locale")
         }
-        let session = LiveSession(recognizer: recognizer)
+        let session = LiveSession(
+            recognizer: recognizer,
+            accumulateTranscripts: accumulateTranscripts
+        )
         try session.start(
             relay: SPLiveResultRelay(
                 callback: callback, userInfo: userInfo, ctxRetain: ctxRetain,
@@ -283,6 +405,50 @@ public func sp_live_recognition_start(
         outErrorMessage?.pointee = ffiString(error.localizedDescription)
         return nil
     }
+}
+
+/// Start a live audio-buffer recognition session. Returns an opaque
+/// token (never NULL on success) that you pass back to
+/// `sp_live_recognition_stop`.
+@_cdecl("sp_live_recognition_start")
+public func sp_live_recognition_start(
+    _ localeId: UnsafePointer<CChar>?,
+    _ recognizerJson: UnsafePointer<CChar>?,
+    _ callback: @escaping SPStreamCallback,
+    _ userInfo: UnsafeMutableRawPointer?,
+    _ ctxRetain: @escaping SPContextRefCallback,
+    _ ctxRelease: @escaping SPContextRefCallback,
+    _ outStatus: UnsafeMutablePointer<Int32>?,
+    _ outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
+) -> UnsafeMutableRawPointer? {
+    return spxStartLiveRecognition(
+        localeId, recognizerJson, callback, userInfo, ctxRetain, ctxRelease,
+        outStatus, outErrorMessage, accumulateTranscripts: false
+    )
+}
+
+/// Start live recognition with accumulated transcription.
+///
+/// Unlike the default streaming API, previously recognized speech is
+/// preserved when Apple begins reporting a new recognition region.
+///
+/// Returns an opaque session token that must be released using
+/// `sp_live_recognition_stop`.
+@_cdecl("sp_live_recognition_start_accumulated")
+public func sp_live_recognition_start_accumulated(
+    _ localeId: UnsafePointer<CChar>?,
+    _ recognizerJson: UnsafePointer<CChar>?,
+    _ callback: @escaping SPStreamCallback,
+    _ userInfo: UnsafeMutableRawPointer?,
+    _ ctxRetain: @escaping SPContextRefCallback,
+    _ ctxRelease: @escaping SPContextRefCallback,
+    _ outStatus: UnsafeMutablePointer<Int32>?,
+    _ outErrorMessage: UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>?
+) -> UnsafeMutableRawPointer? {
+    return spxStartLiveRecognition(
+        localeId, recognizerJson, callback, userInfo, ctxRetain, ctxRelease,
+        outStatus, outErrorMessage, accumulateTranscripts: true
+    )
 }
 
 /// Stop a live recognition session started by `sp_live_recognition_start`.
