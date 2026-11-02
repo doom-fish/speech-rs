@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `LiveRecognition::start_accumulated` starts live recognition that keeps the
+  text from before a pause. After a pause, Speech can start a new result
+  without the previous text, and `LiveRecognition::start` then gives only the
+  new text. `start_accumulated` uses the segment timestamps to make one
+  transcript from the results. If two results overlap, the transcript can be
+  incorrect.
+- The `06_transcription_live` example shows the live updates from the
+  microphone until you push Enter.
+
 ## [0.9.2] - 2026-11-02
 
 ### Fixed
