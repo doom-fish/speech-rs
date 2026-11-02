@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-11-02
+
 ### Added
 
 - `LiveRecognition::start_accumulated` starts live recognition that keeps the
