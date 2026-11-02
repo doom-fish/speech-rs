@@ -102,6 +102,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - `UrlRecognitionRequest` and `AudioBufferRecognitionRequest`
 - `RecognitionRequestOptions` for `taskHint`, `contextualStrings`, `interactionIdentifier`, `shouldReportPartialResults`, `requiresOnDeviceRecognition`, `addsPunctuation`, and custom language models
 - `RecognitionTask` / `AudioBufferRecognitionTask` with RAII cleanup, task state inspection, delegate events, cancellation, finishing, and manual PCM/sample-buffer appends
+- `LiveRecognition` for live transcription from the microphone, and `LiveRecognition::start_accumulated` to keep the text from before a pause
 - `DetailedRecognitionResult`, `Transcription`, `TranscriptionSegmentDetails`, `DetailedRecognitionMetadata`, `VoiceAnalytics`, `AcousticFeature`
 - `SpeechLanguageModel::prepare_custom_language_model*`, `LanguageModelConfiguration`, and `SFCustomLanguageModelData` authoring/export helpers
 - `SpeechAnalyzer`, `SpeechTranscriber`, `SpeechDetector`, `AnalysisContext`, `SpeechModels`, and `AssetInventory` for whole-file analysis; live `SpeechAnalyzer` input (`AnalyzerInput` streams) is not supported yet
@@ -115,7 +116,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Callback queues
 
-Result handlers and task delegate events run on the recognizer's callback queue. By default every recognition gets its own serial background queue (`CallbackQueue::default()`, the same as `CallbackQueue::background()`), so callbacks arrive in order and don't depend on the main run loop. `CallbackQueue::Main` is an explicit choice for apps that run the main run loop; in a program that doesn't (most command-line tools, and `cargo test`), main-queue callbacks never run, recognition never completes, and the blocking calls time out. `LiveRecognition::start` takes a `SpeechRecognizer`, so live updates follow the same locale and callback queue.
+Result handlers and task delegate events run on the recognizer's callback queue. By default every recognition gets its own serial background queue (`CallbackQueue::default()`, the same as `CallbackQueue::background()`), so callbacks arrive in order and don't depend on the main run loop. `CallbackQueue::Main` is an explicit choice for apps that run the main run loop; in a program that doesn't (most command-line tools, and `cargo test`), main-queue callbacks never run, recognition never completes, and the blocking calls time out. `LiveRecognition::start` and `LiveRecognition::start_accumulated` take a `SpeechRecognizer`, so live updates follow the same locale and callback queue.
 
 ## Privacy: on-device by default
 
@@ -141,7 +142,13 @@ cargo run --all-features --example 03_dictation_smoke
 cargo run --all-features --example 04_macos26_surface_smoke
 ```
 
-`02_framework_smoke` exercises locale enumeration, recognizer configuration, native audio-format discovery, async task delegates, and synchronous URL recognition. `03_dictation_smoke` exercises the macOS 26 `DictationTranscriber` bridge. `04_macos26_surface_smoke` walks the analyzer/transcriber/detector pipeline, asset-inventory queries, and `SFCustomLanguageModelData` export helpers. All examples synthesize short AIFF files under `target/` and skip cleanly when authorization or OS support is unavailable.
+`02_framework_smoke` exercises locale enumeration, recognizer configuration, native audio-format discovery, async task delegates, and synchronous URL recognition. `03_dictation_smoke` exercises the macOS 26 `DictationTranscriber` bridge. `04_macos26_surface_smoke` walks the analyzer/transcriber/detector pipeline, asset-inventory queries, and `SFCustomLanguageModelData` export helpers. The smoke examples synthesize short AIFF files under `target/` and skip cleanly when authorization or OS support is unavailable.
+
+`06_transcription_live` records from the microphone with `LiveRecognition::start_accumulated` and shows each update until you push Enter:
+
+```bash
+cargo run --example 06_transcription_live
+```
 
 ## License
 

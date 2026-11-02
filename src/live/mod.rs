@@ -14,13 +14,22 @@ use crate::recognizer::SpeechRecognizer;
 /// One update from the live recogniser.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LiveUpdate {
-    /// Accumulated transcript so far.
+    /// Recognized transcript for this update.
+    ///
+    /// With `start()`, this is Apple's current recognition hypothesis.
+    /// With `start_accumulated()`, it includes previously recognized regions.
     pub transcript: String,
     /// `true` once Apple has decided this utterance is complete.
     pub is_final: bool,
 }
 
 type Callback = Box<dyn Fn(LiveUpdate) + Send + Sync + 'static>;
+
+#[derive(Clone, Copy)]
+enum TranscriptMode {
+    Raw,
+    Accumulated,
+}
 
 /// RAII guard for a running live recognition session. Drop to stop.
 pub struct LiveRecognition {
@@ -70,6 +79,9 @@ impl LiveRecognition {
     /// and callback queue. The `callback` fires on that queue with each
     /// partial / final update.
     ///
+    /// Transcripts reflect Apple's current recognition hypothesis and may
+    /// be replaced by subsequent updates.
+    ///
     /// Requires microphone permission + `SFSpeechRecognizer` authorization.
     ///
     /// # Errors
@@ -83,13 +95,52 @@ impl LiveRecognition {
     where
         F: Fn(LiveUpdate) + Send + Sync + 'static,
     {
+        Self::start_with_mode(recognizer, callback, TranscriptMode::Raw)
+    }
+
+    /// Start live recognition with accumulated transcription.
+    ///
+    /// Unlike [`Self::start`], this method preserves previously recognized
+    /// speech when Apple begins reporting a new recognition region.
+    ///
+    /// Each update contains the accumulated transcript, including the
+    /// current partial recognition hypothesis. Accumulation does not alter
+    /// when Apple emits final recognition results.
+    ///
+    /// Requires microphone permission + `SFSpeechRecognizer` authorization.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`Self::start`].
+    pub fn start_accumulated<F>(
+        recognizer: &SpeechRecognizer,
+        callback: F,
+    ) -> Result<Self, SpeechError>
+    where
+        F: Fn(LiveUpdate) + Send + Sync + 'static,
+    {
+        Self::start_with_mode(recognizer, callback, TranscriptMode::Accumulated)
+    }
+
+    fn start_with_mode<F>(
+        recognizer: &SpeechRecognizer,
+        callback: F,
+        mode: TranscriptMode,
+    ) -> Result<Self, SpeechError>
+    where
+        F: Fn(LiveUpdate) + Send + Sync + 'static,
+    {
         let recognizer_json = recognizer.recognizer_json()?;
         let callback: Callback = Box::new(callback);
         let context = CallbackContext::new(callback);
         let mut status = ffi::status::RECOGNIZER_UNAVAILABLE;
         let mut err_msg: *mut c_char = ptr::null_mut();
+        let start_fn = match mode {
+            TranscriptMode::Raw => ffi::sp_live_recognition_start,
+            TranscriptMode::Accumulated => ffi::sp_live_recognition_start_accumulated,
+        };
         let token = unsafe {
-            ffi::sp_live_recognition_start(
+            start_fn(
                 recognizer.locale_ptr(),
                 recognizer_json.as_ptr(),
                 trampoline,
