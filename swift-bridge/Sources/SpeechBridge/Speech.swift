@@ -304,7 +304,8 @@ private final class LiveSession {
                 "audio engine start failed: \(error.localizedDescription)")
         }
 
-        task = recognizer.recognitionTask(with: request) { [self] result, error in
+        let accumulator = self.accumulator
+        task = recognizer.recognitionTask(with: request) { result, error in
             if let error {
                 relay.deliver("error: \(error.localizedDescription)", isFinal: true)
                 return
