@@ -5,6 +5,14 @@ All notable changes to `speech` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `LiveRecognition` sends a final error message to the callback when Speech
+  gives no result and no error. Before, the callback did not receive a final
+  message, and a caller that waited for `is_final` did not continue.
+
 ## [0.9.1] - 2026-10-26
 
 ### Fixed

@@ -198,7 +198,10 @@ private final class LiveSession {
                 relay.deliver("error: \(error.localizedDescription)", isFinal: true)
                 return
             }
-            guard let result else { return }
+            guard let result else {
+                relay.deliver("error: Speech returned neither a result nor an error", isFinal: true)
+                return
+            }
             relay.deliver(result.bestTranscription.formattedString, isFinal: result.isFinal)
         }
     }
